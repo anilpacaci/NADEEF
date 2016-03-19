@@ -7,6 +7,10 @@
         {
             "type" : "fd",
             "value" : ["zipcode | city, state"]
+        },
+        {
+            "type" : "fd",
+            "value" : ["phonenumber|address1"]
         }
     ]
 }

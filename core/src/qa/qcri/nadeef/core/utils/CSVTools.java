@@ -13,6 +13,7 @@
 
 package qa.qcri.nadeef.core.utils;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
@@ -33,6 +34,7 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -43,6 +45,8 @@ import java.util.concurrent.TimeUnit;
 public class CSVTools {
     private static Logger logger = Logger.getLogger(CSVTools.class);
     // <editor-fold desc="Public methods">
+
+    private static String SCHEMA_SEPARATOR = ",";
 
     /**
      * Reads the content from CSV file.
@@ -183,6 +187,9 @@ public class CSVTools {
         Preconditions.checkNotNull(dialectManager);
         Preconditions.checkArgument(!Strings.isNullOrEmpty(schema));
 
+        // check whether datatypes are specified for each column, if not add string
+        String refinedSchema = schemaTypeChecker(schema);
+
         Stopwatch stopwatch = Stopwatch.createStarted();
         String fullTableName = null;
         String sql;
@@ -208,7 +215,7 @@ public class CSVTools {
                         stat.execute(sql);
                     }
 
-                    sql = dialectManager.createTableFromCSV(fullTableName, schema);
+                    sql = dialectManager.createTableFromCSV(fullTableName, refinedSchema);
                     logger.fine(sql);
                     stat.execute(sql);
                     logger.info("Successfully created table " + fullTableName);
@@ -243,5 +250,29 @@ public class CSVTools {
         }
         return fullTableName;
     }
+
+    /**
+     * @author anilpacaci
+     * Checks schema string to see whether all columns include type. If not, adds string by default
+     * @param schema Schema string to be sent
+     * @return Refiend schema with missing datatypes
+     */
+    public static String schemaTypeChecker(String schema) {
+        String[] columns = schema.split(SCHEMA_SEPARATOR);
+        List<String> refinedColumns = new ArrayList<>();
+
+        for(String column : columns) {
+            if(!column.contains(" ")) {
+                // does not include datatype, add string
+                refinedColumns.add(column + " string");
+            } else {
+                // simpyl use it as it is
+                refinedColumns.add(column);
+            }
+        }
+
+        return Joiner.on(SCHEMA_SEPARATOR).join(refinedColumns);
+    }
+
     // </editor-fold>
 }

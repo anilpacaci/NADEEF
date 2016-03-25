@@ -5,8 +5,12 @@
     },
     "rule" : [
         {
-            "type" : "dc",
-            "value" : ["not(t1.zipcode=t2.zipcode&t1.city!=t2.city)"]
+            "type" : "fd",
+            "value" : ["zipcode | city, state"]
+        },
+        {
+            "type" : "fd",
+            "value" : ["phonenumber|address1"]
         }
     ]
 }

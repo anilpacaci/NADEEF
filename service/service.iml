@@ -21,6 +21,7 @@
         <JAVADOC />
         <SOURCES>
           <root url="file://$MODULE_DIR$/../out" />
+          <root url="file://$MODULE_DIR$/../core/src" />
         </SOURCES>
       </library>
     </orderEntry>
@@ -219,4 +220,3 @@
     </option>
   </component>
 </module>
-

@@ -80,8 +80,9 @@ public class $DCName$ extends PairTupleRule{
 
         for (Predicate predicate : predicates) {
             // TODO: we don't know how to solve NEQ problem.
-            if (predicate.getOperation().equals(Operation.NEQ))
-                continue;
+            // if (predicate.getOperation().equals(Operation.NEQ))
+            //    continue;
+            // TODO: above if condition commented out to make sure that we generate all possible repairs
             Column leftColumn = predicate.getLeft();
             if (predicate.isRightConstant()) {
                 List<Cell> cellList = columnMap.get(leftColumn);

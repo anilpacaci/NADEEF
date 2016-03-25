@@ -4,3 +4,4 @@ bin/
 **/.idea/workspace.xml
 **/nadeef.conf
 logs
+.idea/

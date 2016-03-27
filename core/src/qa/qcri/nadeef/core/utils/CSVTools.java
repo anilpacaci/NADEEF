@@ -262,7 +262,13 @@ public class CSVTools {
         List<String> refinedColumns = new ArrayList<>();
 
         for(String column : columns) {
-            if(!column.contains(" ")) {
+            if(column.contains("(") && column.contains(")")) {
+                // TODO: rewrite here, get rid of expensive operations
+                String columnName = column.substring(0, column.indexOf("("));
+                String columnType = column.substring(column.indexOf("(") + 1, column.indexOf(")")).toLowerCase();
+                refinedColumns.add(columnName + " " + columnType);
+            }
+            else if(!column.contains(" ")) {
                 // does not include datatype, add string
                 refinedColumns.add(column + " string");
             } else {

@@ -1,16 +1,28 @@
 {
     "source" : {
         "type" : "csv",
-        "file" : ["./examples/hospital.csv"]
+        "file" : ["./examples/tax1knoise.csv"]
     },
     "rule" : [
         {
-            "type" : "fd",
-            "value" : ["zipcode | city, state"]
+            "type" : "dc",
+            "value" : ["not(t1.Salary<t2.Salary&t1.State=t2.State&t1.Rate>t2.Rate)"]
         },
-        {
-            "type" : "fd",
-            "value" : ["phonenumber|address1"]
+	{
+            "type" : "dc",
+            "value" : ["not(t1.Zip=t2.Zip&t1.City!=t2.City)"]
+        },
+	{
+            "type" : "dc",
+            "value" : ["not(t1.AreaCode=t2.AreaCode&t1.State!=t2.State)"]
+        },
+	{
+            "type" : "dc",
+            "value" : ["not(t1.Zip=t2.Zip&t1.State!=t2.State)"]
+        },
+	{
+            "type" : "dc",
+            "value" : ["not(t1.LName=t2.LName&t1.Phone=t2.Phone)"]
         }
     ]
 }

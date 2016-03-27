@@ -1,7 +1,7 @@
 {
     "source" : {
         "type" : "csv",
-        "file" : ["./examples/hospital500k.csv"]
+        "file" : ["./examples/hospital.csv"]
     },
     "rule" : [
         {

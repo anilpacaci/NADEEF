@@ -16,6 +16,8 @@ package qa.qcri.nadeef.core.pipeline;
 import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.NadeefConfiguration;
 import qa.qcri.nadeef.core.datamodel.Violation;
+import qa.qcri.nadeef.core.utils.Violations;
+import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
 import qa.qcri.nadeef.tools.CommonTools;
 import qa.qcri.nadeef.tools.PerfReport;
 import qa.qcri.nadeef.tools.Logger;
@@ -37,7 +39,10 @@ public class ViolationExportToCSV extends Operator<java.util.Iterator<Violation>
     @Override protected File execute(java.util.Iterator<Violation> violations) throws Exception {
         Logger tracer = Logger.getLogger(ViolationExportToCSV.class);
         Path outputPath = NadeefConfiguration.getOutputPath();
-        int vid = 0;
+
+        DBConnectionPool connectionPool = getCurrentContext().getConnectionPool();
+
+        int vid = Violations.generateViolationId(connectionPool);
 
         String filename =
             String.format("violation_%s_%d.csv",

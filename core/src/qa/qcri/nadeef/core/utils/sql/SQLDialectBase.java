@@ -18,6 +18,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import org.stringtemplate.v4.ST;
 import org.stringtemplate.v4.STGroupFile;
+import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.tools.CommonTools;
 import qa.qcri.nadeef.tools.DBConfig;
 import qa.qcri.nadeef.tools.Logger;
@@ -184,6 +185,32 @@ public abstract class SQLDialectBase {
     }
 
     /**
+     * Install cell degree tables.
+     * @param cellDegreeViewName audit table name.
+     * @return SQL statement.
+     */
+    public String createCellDegreeView(String cellDegreeViewName, String violationTableName) {
+        STGroupFile template = Preconditions.checkNotNull(getTemplate());
+        ST st = template.getInstanceOf("InstallCellDegreeView");
+        st.add("cellDegreeViewName", cellDegreeViewName.toUpperCase());
+        st.add("violationTableName", violationTableName.toUpperCase());
+        return st.render();
+    }
+
+    /**
+     * Install tuple degree tables.
+     * @param tupleDegreeViewName audit table name.
+     * @return SQL statement.
+     */
+    public String createTupleDegreeView(String tupleDegreeViewName, String violationTableName) {
+        STGroupFile template = Preconditions.checkNotNull(getTemplate());
+        ST st = template.getInstanceOf("InstallTupleDegreeView");
+        st.add("tupleDegreeViewName", tupleDegreeViewName.toUpperCase());
+        st.add("violationTableName", violationTableName.toUpperCase());
+        return st.render();
+    }
+
+    /**
      * Next Vid.
      * @param tableName violation table name.
      * @return SQL statement.
@@ -192,6 +219,22 @@ public abstract class SQLDialectBase {
         STGroupFile template = Preconditions.checkNotNull(getTemplate());
         ST st = template.getInstanceOf("NextVid");
         st.add("tableName", tableName.toUpperCase());
+        return st.render();
+    }
+
+    /**
+     * Next cell tp repair with highest tuple degree and cell degree
+     * @param violationTableName
+     * @param cellDegreeViewName
+     * @param tupleDegreeViewName
+     * @return SQL Statement
+     */
+    public String nextRepairCell(String violationTableName, String cellDegreeViewName, String tupleDegreeViewName ) {
+        STGroupFile template = Preconditions.checkNotNull(getTemplate());
+        ST st = template.getInstanceOf("NextRepairCell");
+        st.add("violationTableName", violationTableName.toUpperCase());
+        st.add("tupleDegreeViewName", tupleDegreeViewName.toUpperCase());
+        st.add("cellDegreeViewName", cellDegreeViewName.toUpperCase());
         return st.render();
     }
 
@@ -233,6 +276,13 @@ public abstract class SQLDialectBase {
     }
 
     /**
+     * Drop view.
+     * @param viewName drop table name.
+     * @return SQL statement.
+     */
+    public String dropView(String viewName) { return "DROP VIEW " + viewName; }
+
+    /**
      * Drop index.
      * @param indexName index name.
      * @param tableName drop table name.
@@ -250,6 +300,8 @@ public abstract class SQLDialectBase {
     public String selectAll(String tableName) {
         return "SELECT * FROM " + tableName;
     }
+
+    public String selectCell(String tableName, int tupleid, String attribute) {return "SELECT " + attribute + " FROM " + tableName + " where tid = " + tupleid; }
 
     public String selectMaxTid(String tableName) {
         return "SELECT MAX(TID) FROM " + tableName;

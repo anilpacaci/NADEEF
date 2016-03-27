@@ -234,4 +234,22 @@ public final class NadeefConfiguration {
     public static Optional<Class> getDecisionMakerClass() {
         return decisionMakerClass;
     }
+
+
+    /**
+     * Gets the tuple_Degree view name.
+     * @return .
+     */
+    public static String getTupleDegreeViewName() {
+        return "TUPLE_DEGREE";
+    }
+
+
+    /**
+     * Gets the Tuple_Degree view name.
+     * @return .
+     */
+    public static String getCellDegreeViewName() {
+        return "CELL_DEGREE";
+    }
 }

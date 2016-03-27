@@ -44,26 +44,25 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * User interactive console.
- *
  */
 public class Console {
 
     //<editor-fold desc="Private fields">
     private static final String logo =
         "   _  __        __        _____\n" +
-        "  / |/ /__ ____/ /__ ___ /   _/\n" +
-        " /    / _ `/ _  / -_) -_)   _/\n" +
-        "/_/|_/\\_,_/\\_,_/\\__/\\__/ __/\n" +
-        "Data Cleaning solution (Build " + System.getenv("BuildVersion")  +
-        ", using Java " + System.getProperty("java.version") + ").\n" +
-        "Copyright (C) Qatar Computing Research Institute, 2013 - Present (http://da.qcri.org).";
+            "  / |/ /__ ____/ /__ ___ /   _/\n" +
+            " /    / _ `/ _  / -_) -_)   _/\n" +
+            "/_/|_/\\_,_/\\_,_/\\__/\\__/ __/\n" +
+            "Data Cleaning solution (Build " + System.getenv("BuildVersion") +
+            ", using Java " + System.getProperty("java.version") + ").\n" +
+            "Copyright (C) Qatar Computing Research Institute, 2013 - Present (http://da.qcri.org).";
 
     private static final String helpInfo = "Type 'help' to see what commands we have.";
 
     private static final String prompt = ":> ";
 
     private static final String[] commands =
-        { "load", "run", "repair", "detect", "help", "set", "exit", "append" };
+        {"load", "run", "repair", "detect", "help", "set", "exit", "append"};
     private static ConsoleReader console;
     private static List<CleanPlan> cleanPlans;
     private static List<CleanExecutor> executors = Lists.newArrayList();
@@ -73,11 +72,13 @@ public class Console {
     //</editor-fold>
 
     //<editor-fold desc="Detect Thread class">
+
     /**
      * Detect thread.
      */
     private static class DetectRunnable implements Runnable {
         private CleanExecutor executor;
+
         public DetectRunnable(CleanExecutor executor) {
             this.executor = executor;
         }
@@ -96,6 +97,7 @@ public class Console {
      */
     private static class RepairRunnable implements Runnable {
         private CleanExecutor executor;
+
         public RepairRunnable(CleanExecutor cleanExecutor) {
             this.executor = cleanExecutor;
         }
@@ -103,6 +105,22 @@ public class Console {
         @Override
         public void run() {
             executor.repair();
+        }
+    }
+
+    /**
+     * Guided Repair thread class.
+     */
+    private static class GuidedRepairRunnable implements Runnable {
+        private CleanExecutor executor;
+
+        public GuidedRepairRunnable(CleanExecutor cleanExecutor) {
+            this.executor = cleanExecutor;
+        }
+
+        @Override
+        public void run() {
+            executor.guidedRepair();
         }
     }
 
@@ -115,6 +133,7 @@ public class Console {
      */
     private static class CleanRunnable implements Runnable {
         private CleanExecutor executor;
+
         public CleanRunnable(CleanExecutor cleanExecutor) {
             this.executor = cleanExecutor;
         }
@@ -127,8 +146,10 @@ public class Console {
     }
 
     //</editor-fold>
+
     /**
      * Start of Console.
+     *
      * @param args user input.
      */
     public static void main(String[] args) {
@@ -187,6 +208,8 @@ public class Console {
                         append(line);
                     } else if (tokens[0].equalsIgnoreCase("set")) {
                         set(line);
+                    } else if (tokens[0].equalsIgnoreCase("guided-repair")) {
+                        guidedRepair(line);
                     } else if (!Strings.isNullOrEmpty(tokens[0])) {
                         console.println("I don't know this command.");
                     }
@@ -201,7 +224,8 @@ public class Console {
         } catch (Exception ex) {
             try {
                 tracer.error("Bootstrap failed", ex);
-            } catch (Exception ignore) {}
+            } catch (Exception ignore) {
+            }
         } finally {
             Bootstrap.shutdown();
         }
@@ -271,7 +295,7 @@ public class Console {
         CleanPlan cleanPlan = cleanPlans.get(lastExecutorIndex);
         DBConfig dbConfig = cleanPlan.getSourceDBConfig();
         Rule rule = cleanPlan.getRule();
-        String tableName = (String)rule.getTableNames().get(defaultTableIndex);
+        String tableName = (String) rule.getTableNames().get(defaultTableIndex);
         SQLDialectBase dialectManager =
             SQLDialectFactory.getDialectManagerInstance(dbConfig.getDialect());
 
@@ -286,7 +310,7 @@ public class Console {
         }
 
         console.println("There are " + cleanPlans.size() + " rules loaded.");
-        for (int i = 0; i < cleanPlans.size(); i ++) {
+        for (int i = 0; i < cleanPlans.size(); i++) {
             console.println("\t" + i + ": " + cleanPlans.get(i).getRule().getRuleName());
         }
     }
@@ -318,7 +342,7 @@ public class Console {
             lastExecutorIndex = 0;
         }
 
-        for (int i = 0; i < executors.size(); i ++) {
+        for (int i = 0; i < executors.size(); i++) {
             if (index != -1 && i != index) {
                 continue;
             }
@@ -363,7 +387,7 @@ public class Console {
             }
         }
 
-        for (int i = 0; i < executors.size(); i ++) {
+        for (int i = 0; i < executors.size(); i++) {
             if (index != -1 && index != i) {
                 continue;
             }
@@ -386,6 +410,48 @@ public class Console {
             console.flush();
             tracer.info(PerfReport.generateRepairSummary(ruleName));
         }
+    }
+
+    private static void guidedRepair(String cmd) throws IOException, InterruptedException {
+        String[] tokens = cmd.split("\\s");
+        if (tokens.length > 2) {
+            console.println("Wrong repair command. Run repair [id number] instead.");
+        }
+
+        if (executors == null || executors.size() == 0) {
+            console.println("There is no rule loaded.");
+            return;
+        }
+
+        int index = -1;
+        if (tokens.length == 2) {
+            index = Integer.valueOf(tokens[1]);
+            if (index < 0 && index >= cleanPlans.size()) {
+                console.println("Out of index.");
+                return;
+            }
+        }
+
+
+        // TODO: since guided repair is independent of a rule. I run on any rule. But if rules connect ot different databases, this would be a problem
+        CleanExecutor executor = executors.get(0);
+        Thread thread = new Thread(new GuidedRepairRunnable(executor));
+        thread.start();
+
+        do {
+            Thread.sleep(1000);
+            double percentage = executor.getRepairProgress();
+            printProgress(percentage, "REPAIR");
+        } while (thread.isAlive());
+
+        // print out the final result.
+        String ruleName = executor.getCleanPlan().getRule().getRuleName();
+        double percentage = executor.getRepairProgress();
+        printProgress(percentage, "REPAIR");
+        console.println();
+        console.flush();
+        tracer.info(PerfReport.generateRepairSummary(ruleName));
+
     }
 
     private static void run(String cmd)
@@ -426,7 +492,7 @@ public class Console {
             } catch (Exception ex) {
                 tracer.error("Cleaning database failed.", ex);
             }
-            for (int i = 0; i < executors.size(); i ++) {
+            for (int i = 0; i < executors.size(); i++) {
                 if (index != -1 && index != i) {
                     continue;
                 }
@@ -451,14 +517,14 @@ public class Console {
             // do the final holistic update
             updateExecutor.run();
             updatedCell = updateExecutor.getUpdateCellCount();
-            maxIterationNumber ++;
+            maxIterationNumber++;
         } while (
             updatedCell != 0 &&
-            maxIterationNumber <= NadeefConfiguration.getMaxIterationNumber()
-        );
+                maxIterationNumber <= NadeefConfiguration.getMaxIterationNumber()
+            );
 
         // Print overall statistics
-        for (int i = 0; i < executors.size(); i ++) {
+        for (int i = 0; i < executors.size(); i++) {
             if (index != -1 && index != i) {
                 continue;
             }
@@ -482,7 +548,7 @@ public class Console {
 
     private static void printHelp() throws IOException {
         final String help =
-                " |NADEEF console usage:\n" +
+            " |NADEEF console usage:\n" +
                 " |----------------------------------\n" +
                 " |help : Print out this help information.\n" +
                 " |\n" +
@@ -512,16 +578,16 @@ public class Console {
     //<editor-fold desc="Private helpers">
     private static void printProgress(double percentage, String title) throws IOException {
         console.redrawLine();
-        int ne = (int)Math.round(percentage * 50.f);
+        int ne = (int) Math.round(percentage * 50.f);
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder.append('[').append(title).append("][");
-        for (int i = 0; i < ne; i ++) {
+        for (int i = 0; i < ne; i++) {
             stringBuilder.append("=");
         }
 
         if (ne < 50) {
             stringBuilder.append(">");
-            for (int i = 0; i < 50 - ne; i ++) {
+            for (int i = 0; i < 50 - ne; i++) {
                 stringBuilder.append(" ");
             }
         }

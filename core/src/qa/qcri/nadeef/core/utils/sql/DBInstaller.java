@@ -77,6 +77,8 @@ public final class DBInstaller {
         String violationTableName = NadeefConfiguration.getViolationTableName();
         String repairTableName = NadeefConfiguration.getRepairTableName();
         String auditTableName = NadeefConfiguration.getAuditTableName();
+        String tupleDegreeViewName = NadeefConfiguration.getTupleDegreeViewName();
+        String cellDegreeViewName = NadeefConfiguration.getCellDegreeViewName();
 
         // TODO: make tables BNCF
         try {
@@ -105,6 +107,22 @@ public final class DBInstaller {
                 );
             } else {
                 stat.execute(dialectManager.createAuditTable(auditTableName));
+            }
+
+            if(DBMetaDataTool.isTableExist(dbConfig, cellDegreeViewName)) {
+                tracer.fine(
+                    "Cell Degree is already installed on the database, skip installing."
+                );
+            } else {
+                stat.execute(dialectManager.createCellDegreeView(cellDegreeViewName, violationTableName));
+            }
+
+            if(DBMetaDataTool.isTableExist(dbConfig, tupleDegreeViewName)) {
+                tracer.fine(
+                    "Tuple Degree is already installed on the database, skip installing."
+                );
+            } else {
+                stat.execute(dialectManager.createTupleDegreeView(tupleDegreeViewName, violationTableName));
             }
 
             conn.commit();

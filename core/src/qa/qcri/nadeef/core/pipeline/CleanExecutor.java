@@ -42,6 +42,7 @@ public class CleanExecutor {
     private Flow queryFlow;
     private Flow detectFlow;
     private Flow repairFlow;
+    private Flow guidedRepairFlow;
     private DBConnectionPool connectionPool;
     private ExecutionContext context;
     //</editor-fold>
@@ -50,6 +51,7 @@ public class CleanExecutor {
 
     /**
      * Constructor. Use default NADEEF default config as DB config.
+     *
      * @param cleanPlan input {@link CleanPlan}.
      */
     public CleanExecutor(CleanPlan cleanPlan) throws Exception {
@@ -58,8 +60,9 @@ public class CleanExecutor {
 
     /**
      * Constructor.
+     *
      * @param cleanPlan input {@link CleanPlan}.
-     * @param dbConfig meta data dbconfig.
+     * @param dbConfig  meta data dbconfig.
      */
     public CleanExecutor(CleanPlan cleanPlan, DBConfig dbConfig) throws Exception {
         this.cleanPlan = Preconditions.checkNotNull(cleanPlan);
@@ -88,12 +91,13 @@ public class CleanExecutor {
 
     /**
      * Returns <code>True</code> when the clean executor is running.
+     *
      * @return <code>True</code> when the clean executor is running.
      */
     public synchronized boolean isRunning() {
         return detectFlow.isRunning() ||
-               queryFlow.isRunning() ||
-               repairFlow.isRunning();
+            queryFlow.isRunning() ||
+            repairFlow.isRunning();
     }
 
     /**
@@ -131,13 +135,14 @@ public class CleanExecutor {
      * CleanExecutor finalizer.
      */
     @Override
-    public void finalize() throws Throwable{
+    public void finalize() throws Throwable {
         shutdown();
         super.finalize();
     }
 
     /**
      * Gets the output from Detect.
+     *
      * @return output object from Detect.
      */
     public List<Violation> getDetectViolation() {
@@ -147,16 +152,18 @@ public class CleanExecutor {
 
     /**
      * Gets the output from Repair.
+     *
      * @return output object from repair.
      */
     @SuppressWarnings("unchecked")
     public <T> T getRepairOutput() {
         String key = repairFlow.getCurrentOutputKey();
-        return (T)cacheManager.get(key);
+        return (T) cacheManager.get(key);
     }
 
     /**
      * Gets the current progress percentage of Detect.
+     *
      * @return current progress percentage of Detect.
      */
     public double getDetectProgress() {
@@ -166,6 +173,7 @@ public class CleanExecutor {
 
     /**
      * Gets the detail progress information of Detection.
+     *
      * @return the detail progress information of Detection.
      */
     public List<ProgressReport> getDetailDetectProgress() {
@@ -178,6 +186,7 @@ public class CleanExecutor {
 
     /**
      * Gets the current percentage of Repair.
+     *
      * @return current percentage of Repair.
      */
     public double getRepairProgress() {
@@ -186,6 +195,7 @@ public class CleanExecutor {
 
     /**
      * Gets the detail progress information of Detection.
+     *
      * @return the detail progress information of Detection.
      */
     public List<ProgressReport> getDetailRepairProgress() {
@@ -222,6 +232,7 @@ public class CleanExecutor {
 
     /**
      * Gets the CleanPlan.
+     *
      * @return the CleanPlan.
      */
     public CleanPlan getCleanPlan() {
@@ -250,6 +261,25 @@ public class CleanExecutor {
         return this;
     }
 
+    public CleanExecutor guidedRepair() {
+        Stopwatch sw = Stopwatch.createStarted();
+        guidedRepairFlow.reset();
+
+        guidedRepairFlow.start();
+        guidedRepairFlow.waitUntilFinish();
+
+        context.clearNewTuples();
+
+        PerfReport.appendMetric(
+            PerfReport.Metric.RepairTime,
+            sw.elapsed(TimeUnit.MILLISECONDS)
+        );
+        sw.stop();
+        // TODO: remove it.
+        System.gc();
+        return this;
+    }
+
     /**
      * Runs both the detection and repair.
      */
@@ -261,6 +291,7 @@ public class CleanExecutor {
     //</editor-fold>
 
     //<editor-fold desc="Private members">
+
     /**
      * Assemble the workflow on demand.
      */
@@ -301,6 +332,10 @@ public class CleanExecutor {
                 .addNode(new ViolationImport(context))
                 .addNode(new ViolationRepair(context), 6)
                 .addNode(new FixExport(context));
+
+            // assemble guided-repair flow
+            guidedRepairFlow = new Flow("guided-repair");
+            guidedRepairFlow.setInputKey(cacheManager.getKeyForNothing()).addNode(new GuidedRepair(context));
 
         } catch (Exception ex) {
             tracer.error("Exception happens during assembling the pipeline ", ex);

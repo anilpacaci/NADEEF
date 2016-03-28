@@ -62,7 +62,7 @@ public class ExecutionContext {
         this.rule = Preconditions.checkNotNull(rule);
     }
 
-    DBConnectionPool getConnectionPool() {
+    public DBConnectionPool getConnectionPool() {
         if (connectionPool== null) {
             throw new RuntimeException("Connection pool in the context is not initialized.");
         }

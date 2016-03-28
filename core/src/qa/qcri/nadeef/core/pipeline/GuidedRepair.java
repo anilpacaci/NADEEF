@@ -16,10 +16,8 @@ package qa.qcri.nadeef.core.pipeline;
 import com.google.common.base.Optional;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
-import qa.qcri.nadeef.core.datamodel.Fix;
-import qa.qcri.nadeef.core.datamodel.NadeefConfiguration;
-import qa.qcri.nadeef.core.datamodel.Rule;
-import qa.qcri.nadeef.core.datamodel.Violation;
+import qa.qcri.nadeef.core.datamodel.*;
+import qa.qcri.nadeef.core.utils.UpdateManager;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectBase;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectFactory;
@@ -117,12 +115,17 @@ public class GuidedRepair
 
                         int res = updateStatement.executeUpdate();
                         updateStatement.close();
+                        conn.commit();
                         if(res == 0) {
                             // update is not succesfull
                             throw new Exception("Database could NOT be updated to clean value: " + originalValue + " on tuple: " + tupleID);
                         }
                         // call UpdateManager to recompute violatios
-
+                        Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attributeName)).value(originalValue).build();
+                        // remove existing violations
+                        UpdateManager.getInstance().removeViolations(updatedCell, getCurrentContext());
+                        // find new violations
+                        UpdateManager.getInstance().findNewViolations(updatedCell, getCurrentContext());
                     }
 
                     userInteractionCount++;

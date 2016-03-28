@@ -1,13 +1,9 @@
 {
     "source" : {
         "type" : "csv",
-        "file" : ["./examples/hospital.csv"]
+        "file" : ["./examples/tax1kclean.csv"]
     },
     "rule" : [
-        {
-	    "name" : "FD1",
-            "type" : "fd",
-            "value" : ["Zip | State, City"]
-        }
+        
     ]
 }

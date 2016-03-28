@@ -25,6 +25,7 @@ import qa.qcri.nadeef.core.pipeline.CleanExecutor;
 import qa.qcri.nadeef.core.pipeline.UpdateExecutor;
 import qa.qcri.nadeef.core.utils.Bootstrap;
 import qa.qcri.nadeef.core.utils.CSVTools;
+import qa.qcri.nadeef.core.utils.UpdateManager;
 import qa.qcri.nadeef.core.utils.sql.DBInstaller;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectBase;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectFactory;
@@ -62,7 +63,7 @@ public class Console {
     private static final String prompt = ":> ";
 
     private static final String[] commands =
-        {"load", "run", "repair", "detect", "help", "set", "exit", "append"};
+        {"load", "run", "repair", "guided-repair", "detect", "help", "set", "exit", "append"};
     private static ConsoleReader console;
     private static List<CleanPlan> cleanPlans;
     private static List<CleanExecutor> executors = Lists.newArrayList();
@@ -256,6 +257,8 @@ public class Console {
             cleanPlans = CleanPlan.create(reader, dbConfig);
             for (CleanPlan cleanPlan : cleanPlans) {
                 executors.add(new CleanExecutor(cleanPlan, dbConfig));
+                // add each rule to update Manager
+                UpdateManager.getInstance().addRule(cleanPlan.getRule());
             }
         } catch (Exception ex) {
             tracer.error("Loading CleanPlan failed.", ex);

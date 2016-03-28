@@ -16,14 +16,5 @@ select V.vid, V.rid, V.tupleid, V.attribute, F1.degree as tuple_degree, F2.degre
 where V.tupleid = F1.tupleid and V.rid=F1.rid and V.tupleid=F2.tupleid and V.attribute=F2.attribute
 order by tuple_degree desc, cell_degree desc limit 1; 
 
-//repair:
-while(size(violationtable) >0){
-	select cell(tupleid, attribute) with top tupledegree, celldegree;
-	check cell from clean-data-table
-		if(cell is wrong){
-			update cell in dirty-data-table;
-			UpdataManager.update(cell, violation-table);
-		}
-	//add Feature-vector to Feature-vector-set;
-}
+
 

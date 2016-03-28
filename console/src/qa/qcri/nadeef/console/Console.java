@@ -444,16 +444,15 @@ public class Console {
         do {
             Thread.sleep(1000);
             double percentage = executor.getRepairProgress();
-            printProgress(percentage, "REPAIR");
+            printProgress(percentage, "GUIDED-REPAIR");
         } while (thread.isAlive());
 
         // print out the final result.
-        String ruleName = executor.getCleanPlan().getRule().getRuleName();
         double percentage = executor.getRepairProgress();
-        printProgress(percentage, "REPAIR");
+        printProgress(percentage, "GUIDED-REPAIR");
         console.println();
         console.flush();
-        tracer.info(PerfReport.generateRepairSummary(ruleName));
+        tracer.info(PerfReport.generateGuidedRepairSummary());
 
     }
 

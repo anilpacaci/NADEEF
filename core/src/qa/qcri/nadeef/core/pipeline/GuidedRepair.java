@@ -67,6 +67,7 @@ public class GuidedRepair
 
 
         int userInteractionCount = 0;
+        int hitCount = 0;
 
 
         // TODO: WARN: XXX: find a better way to pass clean table name
@@ -110,6 +111,9 @@ public class GuidedRepair
                     if (!originalValue.equals(currentValue)) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
                         offset = 0;
+
+                        // increae hit count
+                        hitCount++;
 
                         String updateCellSQL = new StringBuilder("UPDATE ").append(dirtyTableName).append(" SET ").append(attributeName).append(" = ?").append(" where tid = ?").toString();
                         PreparedStatement updateStatement = conn.prepareStatement(updateCellSQL);
@@ -157,6 +161,8 @@ public class GuidedRepair
         long elapseTime = stopwatch.elapsed(TimeUnit.MILLISECONDS);
 
         PerfReport.appendMetric(PerfReport.Metric.RepairCallTime, elapseTime);
+        PerfReport.appendMetric(PerfReport.Metric.UserInteractionHITCount, hitCount);
+        PerfReport.appendMetric(PerfReport.Metric.UserInteractionCount, userInteractionCount);
         stopwatch.stop();
         return userInteractionCount;
     }

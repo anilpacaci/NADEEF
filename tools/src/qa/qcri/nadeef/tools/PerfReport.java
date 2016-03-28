@@ -83,6 +83,10 @@ public class PerfReport {
         FixImport,
         // Update cell number
         UpdatedCellNumber,
+
+        // Guided Repair Metrics
+        UserInteractionCount,
+        UserInteractionHITCount
     }
 
     public static synchronized Map<Metric, List<Long>> getMetrics() {
@@ -173,6 +177,32 @@ public class PerfReport {
             .append(formatEntry(Metric.FixExport, "New Candidate Fix", ""))
             .append("\n")
             .append(formatEntry(Metric.FixImport, "Effective Candidate Fix", ""))
+            .append("\n")
+            .append("----------------------------------------------------------------")
+            .append("\n");
+
+        Collection<Long> totalTimes = PerfReport.get(Metric.RepairTime);
+
+        Long totalTime = 0l;
+        for (Long tmp : totalTimes) {
+            totalTime += tmp;
+        }
+
+        sb.append("Repair finished in " + totalTime + " ms.\n");
+        return sb.toString();
+    }
+
+    public static String generateGuidedRepairSummary() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Guided Repair summary:")
+            .append("\n")
+            .append("----------------------------------------------------------------")
+            .append("\n")
+            .append(formatEntry(Metric.RepairCallTime, "Repair perCall time", "ms"))
+            .append("\n")
+            .append(formatEntry(Metric.UserInteractionHITCount, "HIT Count", ""))
+            .append("\n")
+            .append(formatEntry(Metric.UserInteractionCount, "Number of User Interactions", ""))
             .append("\n")
             .append("----------------------------------------------------------------")
             .append("\n");

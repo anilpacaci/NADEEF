@@ -76,10 +76,12 @@ public class GuidedRepair
         Connection conn = DBConnectionPool.createConnection(dbConfig);
         Statement stat = conn.createStatement();
 
+        int offset = 0;
+
         try {
             while (true) {
 
-                ResultSet rs = stat.executeQuery(dialectManager.nextRepairCell(NadeefConfiguration.getViolationTableName(), NadeefConfiguration.getCellDegreeViewName(), NadeefConfiguration.getTupleDegreeViewName()));
+                ResultSet rs = stat.executeQuery(dialectManager.nextRepairCell(NadeefConfiguration.getViolationTableName(), NadeefConfiguration.getCellDegreeViewName(), NadeefConfiguration.getTupleDegreeViewName(), offset));
                 if (rs.next()) {
                     int tupleID = rs.getInt("tupleid");
                     String attributeName = rs.getString("attribute");
@@ -106,7 +108,8 @@ public class GuidedRepair
 
 
                     if (!originalValue.equals(currentValue)) {
-                        // HIT :)) dirty cell correctly identified, now update database
+                        // HIT :)) dirty cell correctly identified, now update database, reset the offset
+                        offset = 0;
 
                         String updateCellSQL = new StringBuilder("UPDATE ").append(dirtyTableName).append(" SET ").append(attributeName).append(" = ?").append(" where tid = ?").toString();
                         PreparedStatement updateStatement = conn.prepareStatement(updateCellSQL);
@@ -126,6 +129,9 @@ public class GuidedRepair
                         UpdateManager.getInstance().removeViolations(updatedCell, getCurrentContext());
                         // find new violations
                         UpdateManager.getInstance().findNewViolations(updatedCell, getCurrentContext());
+                    } else {
+                        // just increase the offset to retrieve the nextrepaircell
+                        offset++;
                     }
 
                     userInteractionCount++;

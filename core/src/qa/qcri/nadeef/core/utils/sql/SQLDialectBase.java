@@ -229,12 +229,13 @@ public abstract class SQLDialectBase {
      * @param tupleDegreeViewName
      * @return SQL Statement
      */
-    public String nextRepairCell(String violationTableName, String cellDegreeViewName, String tupleDegreeViewName ) {
+    public String nextRepairCell(String violationTableName, String cellDegreeViewName, String tupleDegreeViewName, int offset ) {
         STGroupFile template = Preconditions.checkNotNull(getTemplate());
         ST st = template.getInstanceOf("NextRepairCell");
         st.add("violationTableName", violationTableName.toUpperCase());
         st.add("tupleDegreeViewName", tupleDegreeViewName.toUpperCase());
         st.add("cellDegreeViewName", cellDegreeViewName.toUpperCase());
+        st.add("offset", offset);
         return st.render();
     }
 

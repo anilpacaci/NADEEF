@@ -4,6 +4,9 @@
         "file" : ["./examples/tax1kclean.csv"]
     },
     "rule" : [
-        
+        {
+            "type" : "dc",
+            "value" : ["not(t1.Salary<t2.Salary&t1.State=t2.State&t1.Rate>t2.Rate)"]
+        }
     ]
 }

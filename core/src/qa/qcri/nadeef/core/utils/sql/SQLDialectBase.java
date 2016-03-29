@@ -240,6 +240,23 @@ public abstract class SQLDialectBase {
     }
 
     /**
+     * Next cell tp repair randomly
+     * @param violationTableName
+     * @param cellDegreeViewName
+     * @param tupleDegreeViewName
+     * @return SQL Statement
+     */
+    public String nextRepairCellRandom(String violationTableName, String cellDegreeViewName, String tupleDegreeViewName, int offset ) {
+        STGroupFile template = Preconditions.checkNotNull(getTemplate());
+        ST st = template.getInstanceOf("NextRepairCellRandom");
+        st.add("violationTableName", violationTableName.toUpperCase());
+        st.add("tupleDegreeViewName", tupleDegreeViewName.toUpperCase());
+        st.add("cellDegreeViewName", cellDegreeViewName.toUpperCase());
+        st.add("offset", offset);
+        return st.render();
+    }
+
+    /**
      * Creates a table in the database from a CSV file header.
      * @param tableName table name.
      * @param content table description.

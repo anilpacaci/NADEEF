@@ -136,6 +136,7 @@ public class GuidedRepair
                     } else {
                         // just increase the offset to retrieve the nextrepaircell
                         offset++;
+
                     }
 
                     userInteractionCount++;

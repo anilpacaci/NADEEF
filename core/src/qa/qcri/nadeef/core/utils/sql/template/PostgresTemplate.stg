@@ -71,7 +71,17 @@ NextVid(tableName) ::= <<
 >>
 
 NextRepairCell(violationTableName, tupleDegreeViewName, cellDegreeViewName, offset ) ::= <<
-select V.vid, V.rid, V.tupleid, V.attribute, F1.degree as tuple_degree, F2.degree as cell_degree from $violationTableName$ as V, $tupleDegreeViewName$ as F1, $cellDegreeViewName$ as F2
+select V.rid, V.tupleid, V.attribute, AVG(F1.degree) as tuple_degree, AVG(F2.degree) as cell_degree from $violationTableName$ as V, $tupleDegreeViewName$ as F1, $cellDegreeViewName$ as F2
 where V.tupleid = F1.tupleid and V.rid=F1.rid and V.tupleid=F2.tupleid and V.attribute=F2.attribute
-order by tuple_degree desc, cell_degree desc limit 1 offset $offset$;
+group by V.rid, V.tupleid, V.attribute
+order by tuple_degree desc, cell_degree desc, V.rid, V.tupleid, V.attribute
+limit 1 offset $offset$;
+>>
+
+NextRepairCellRandom(violationTableName, tupleDegreeViewName, cellDegreeViewName, offset ) ::= <<
+select V.rid, V.tupleid, V.attribute, AVG(F1.degree) as tuple_degree, AVG(F2.degree) as cell_degree from $violationTableName$ as V, $tupleDegreeViewName$ as F1, $cellDegreeViewName$ as F2
+where V.tupleid = F1.tupleid and V.rid=F1.rid and V.tupleid=F2.tupleid and V.attribute=F2.attribute
+group by V.rid, V.tupleid, V.attribute
+order by V.rid, V.tupleid, V.attribute
+limit 1 offset $offset$;
 >>

@@ -17,8 +17,10 @@ import com.google.common.base.Optional;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import qa.qcri.nadeef.core.datamodel.*;
+import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
 import qa.qcri.nadeef.core.utils.UpdateManager;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
+import qa.qcri.nadeef.core.utils.sql.DBMetaDataTool;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectBase;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectFactory;
 import qa.qcri.nadeef.tools.DBConfig;
@@ -26,10 +28,8 @@ import qa.qcri.nadeef.tools.Logger;
 import qa.qcri.nadeef.tools.PerfReport;
 import qa.qcri.nadeef.tools.sql.SQLDialect;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Statement;
+import java.sql.*;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit;
  *         Counts the total number of user interactions needed
  */
 public class GuidedRepair
-    extends Operator<Optional, Integer> {
+    extends Operator<Optional, Collection<TrainingInstance>> {
 
     private static Logger tracer = Logger.getLogger(GuidedRepair.class);
 
@@ -56,7 +56,7 @@ public class GuidedRepair
      */
     @Override
     @SuppressWarnings("unchecked")
-    public Integer execute(Optional emptyInput)
+    public Collection<TrainingInstance> execute(Optional emptyInput)
         throws Exception {
         Stopwatch stopwatch = Stopwatch.createStarted();
         Rule rule = getCurrentContext().getRule();
@@ -65,6 +65,7 @@ public class GuidedRepair
         SQLDialectBase dialectManager =
             SQLDialectFactory.getDialectManagerInstance(dialect);
 
+        List<TrainingInstance> trainingInstances = new ArrayList<>();
 
         int userInteractionCount = 0;
         int hitCount = 0;
@@ -88,36 +89,28 @@ public class GuidedRepair
                     String attributeName = rs.getString("attribute");
                     rs.close();
 
-                    Object originalValue, currentValue;
+                    Cell cleanCell;
+                    Tuple dirtyTuple;
 
                     // user interaction, simulate user interaction by checking from clean dataset, ground truth
-                    rs = stat.executeQuery(dialectManager.selectCell(cleanTableName, tupleID, attributeName));
-                    if(rs.next()) {
-                        originalValue = rs.getObject(attributeName);
-                        rs.close();
-                    } else {
-                        throw new Exception("Clean Table could NOT be read on tuple: " + tupleID);
-                    }
-
+                    dirtyTuple = getDatabaseTuple(dbConfig, dirtyTableName, tupleID);
+                    cleanCell = getDatabaseCell(dbConfig, cleanTableName, tupleID, attributeName);
                     rs = stat.executeQuery(dialectManager.selectCell(dirtyTableName, tupleID, attributeName));
-                    if(rs.next()) {
-                        currentValue = rs.getObject(attributeName);
-                        rs.close();
-                    } else {
-                        throw new Exception("Dirty Table could NOT be read on tuple: " + tupleID);
-                    }
+
+                    String cleanValue = cleanCell.getValue().toString();
+                    String dirtyValue = dirtyTuple.getCell(attributeName).getValue().toString();
 
 
-                    if (!originalValue.equals(currentValue)) {
+                    if (!cleanValue.equals(dirtyValue)) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
                         offset = 0;
 
-                        // increae hit count
+                        // increase hit count
                         hitCount++;
 
                         String updateCellSQL = new StringBuilder("UPDATE ").append(dirtyTableName).append(" SET ").append(attributeName).append(" = ?").append(" where tid = ?").toString();
                         PreparedStatement updateStatement = conn.prepareStatement(updateCellSQL);
-                        updateStatement.setObject(1, originalValue);
+                        updateStatement.setObject(1, cleanCell.getValue());
                         updateStatement.setInt(2, tupleID);
 
                         int res = updateStatement.executeUpdate();
@@ -125,10 +118,14 @@ public class GuidedRepair
                         conn.commit();
                         if(res == 0) {
                             // update is not succesfull
-                            throw new Exception("Database could NOT be updated to clean value: " + originalValue + " on tuple: " + tupleID);
+                            throw new Exception("Database could NOT be updated to clean value: " + cleanCell.getValue() + " on tuple: " + tupleID);
                         }
+
+                        // add positive training instance
+                        trainingInstances.add(new TrainingInstance(TrainingInstance.Label.YES, dirtyTuple, cleanCell, 0));
+
                         // call UpdateManager to recompute violatios
-                        Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attributeName)).value(originalValue).build();
+                        Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attributeName)).value(cleanCell.getValue()).build();
                         // remove existing violations
                         UpdateManager.getInstance().removeViolations(updatedCell, getCurrentContext());
                         // find new violations
@@ -136,7 +133,11 @@ public class GuidedRepair
                     } else {
                         // just increase the offset to retrieve the nextrepaircell
                         offset++;
-
+                        if(offset > 20) {
+                            System.out.println("Count:" + userInteractionCount + " Offset:" + offset + " tupleid:" + tupleID + " attribute:" + attributeName + " currentValue:" + dirtyTuple.getCell(attributeName).getValue());
+                        }
+                        // add negative training instance
+                        trainingInstances.add(new TrainingInstance(TrainingInstance.Label.NO, dirtyTuple, cleanCell, 0));
                     }
 
                     userInteractionCount++;
@@ -165,6 +166,92 @@ public class GuidedRepair
         PerfReport.appendMetric(PerfReport.Metric.UserInteractionHITCount, hitCount);
         PerfReport.appendMetric(PerfReport.Metric.UserInteractionCount, userInteractionCount);
         stopwatch.stop();
-        return userInteractionCount;
+        return trainingInstances;
+    }
+
+    /**
+     * Reads the value of a cell and constructs a cell object
+     * @param dbConfig
+     * @param tableName Dirty or Clean Data source. It only works for source databases imported to Nadeef
+     * @param tupleID
+     * @param attribute
+     * @return
+     * @throws SQLException
+     * @throws NadeefDatabaseException
+     */
+    private Cell getDatabaseCell(DBConfig dbConfig, String tableName, int tupleID, String attribute) throws SQLException, NadeefDatabaseException {
+        Cell.Builder builder = new Cell.Builder();
+
+        SQLDialectBase dialectManager = SQLDialectFactory.getDialectManagerInstance(dbConfig.getDialect());
+        Connection conn = null;
+        Statement stat = null;
+        Object value = null;
+
+        try {
+            conn = DBConnectionPool.createConnection(dbConfig);
+            stat = conn.createStatement();
+            ResultSet rs = stat.executeQuery(dialectManager.selectCell(tableName, tupleID, attribute));
+            if(rs.next()) {
+                value = rs.getObject(attribute);
+                builder.tid(tupleID).column(new Column(tableName, attribute)).value(value);
+            }
+            rs.close();
+        } catch (IllegalAccessException | InstantiationException | SQLException | ClassNotFoundException e) {
+            tracer.error("Cell value could NOT be retrieved from database", e);
+            throw new NadeefDatabaseException("Cell with tid:" + tupleID + " attribute: " + attribute + "could NOT be read", e);
+        } finally {
+            if(stat != null && !stat.isClosed()) {
+                stat.close();
+            }
+            if(conn != null && !conn.isClosed()) {
+                conn.close();
+            }
+        }
+        return builder.build();
+    }
+
+    /**
+     * Reads given tuple from database and constructs a Tuple Object
+     * @param dbConfig
+     * @param tableName Dirty or Clean Data source. It only works for source databases imported to Nadeef
+     * @param tupleID
+     * @return
+     * @throws SQLException
+     * @throws NadeefDatabaseException
+     */
+    private Tuple getDatabaseTuple(DBConfig dbConfig, String tableName, int tupleID ) throws SQLException, NadeefDatabaseException{
+        Cell.Builder builder = new Cell.Builder();
+
+        SQLDialectBase dialectManager = SQLDialectFactory.getDialectManagerInstance(dbConfig.getDialect());
+        Connection conn = null;
+        Statement stat = null;
+        Tuple tuple = null;
+        Schema schema = null;
+
+        try {
+            schema = DBMetaDataTool.getSchema(dbConfig, tableName);
+            conn = DBConnectionPool.createConnection(dbConfig);
+            stat = conn.createStatement();
+            ResultSet rs = stat.executeQuery(dialectManager.selectTuple(tableName, tupleID));
+            if(rs.next()) {
+                List<byte[]> values = new ArrayList<>();
+                for(Column column : schema.getColumns()) {
+                    values.add(rs.getBytes(column.getColumnName()));
+                }
+                tuple = new Tuple(tupleID, schema,values);
+            }
+            rs.close();
+        } catch (Exception e) {
+            tracer.error("Tuple could NOT be retrieved from database", e);
+            throw new NadeefDatabaseException("Tuple with tid:" + tupleID + " could NOT be read", e);
+        } finally {
+            if(stat != null && !stat.isClosed()) {
+                stat.close();
+            }
+            if(conn != null && !conn.isClosed()) {
+                conn.close();
+            }
+        }
+        return tuple;
     }
 }

@@ -321,6 +321,8 @@ public abstract class SQLDialectBase {
 
     public String selectCell(String tableName, int tupleid, String attribute) {return "SELECT " + attribute + " FROM " + tableName + " where tid = " + tupleid; }
 
+    public String selectTuple(String tableName, int tupleid) {return "SELECT * FROM " + tableName + " WHERE tid = " + tupleid;}
+
     public String selectMaxTid(String tableName) {
         return "SELECT MAX(TID) FROM " + tableName;
     }

@@ -18,6 +18,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
+import qa.qcri.nadeef.core.utils.Fixes;
 import qa.qcri.nadeef.core.utils.UpdateManager;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
 import qa.qcri.nadeef.core.utils.sql.DBMetaDataTool;
@@ -100,7 +101,12 @@ public class GuidedRepair
                     String cleanValue = cleanCell.getValue().toString();
                     String dirtyValue = dirtyTuple.getCell(attributeName).getValue().toString();
 
-
+                    //Get all possible Fixes from repair table, then invoke holistic repair
+                    // TODO: for now, we calculate holistic repair but discard result
+                    Collection<Fix> repairExpressions = getFixesOfCell(dbConfig, dirtyTuple.getCell(attributeName));
+                    Collection<Fix> solutions = new SatSolver(getCurrentContext()).decide(repairExpressions);
+                    
+                    
                     if (!cleanValue.equals(dirtyValue)) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
                         offset = 0;
@@ -253,5 +259,49 @@ public class GuidedRepair
             }
         }
         return tuple;
+    }
+
+    private Collection<Fix> getFixesOfCell(DBConfig dbConfig, Cell cell) throws NadeefDatabaseException, SQLException {
+        String repairTableName = NadeefConfiguration.getRepairTableName();
+
+        String sql = new StringBuilder().append("SELECT * FROM ").append(repairTableName).append(" WHERE ( c1_tupleid = ? OR c2_tupleid = ? ) AND ( c1_attribute = ? OR c2_attribute = ? ) ").toString();
+
+        Connection conn = null;
+        PreparedStatement stat = null;
+
+        ResultSet resultSet = null;
+        SQLDialect dialect = dbConfig.getDialect();
+        SQLDialectBase dialectBase =
+            SQLDialectBase.createDialectBaseInstance(dialect);
+        Collection<Fix> result = null;
+        try {
+            conn = DBConnectionPool.createConnection(dbConfig, true);
+            stat = conn.prepareStatement(sql);
+            stat.setObject(1, cell.getTid());
+            stat.setObject(2, cell.getTid());
+            stat.setObject(3, cell.getColumn().getColumnName());
+            stat.setObject(4, cell.getColumn().getColumnName());
+            resultSet = stat.executeQuery();
+            result = Fixes.fromQuery(resultSet);
+
+        } catch (Exception e) {
+            tracer.error("Repairs could NOT be retrieved from database", e);
+            throw new NadeefDatabaseException("Repairs of cell with tid:" + cell.getTid() + " attribute:" + cell.getColumn().getColumnName() + " could NOT be read", e);
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+
+            if (stat != null) {
+                stat.close();
+            }
+
+            if (conn != null) {
+                conn.close();
+            }
+        }
+
+        Collection<Fix> processedResults = Fixes.substituteRHS(cell, result);
+        return processedResults;
     }
 }

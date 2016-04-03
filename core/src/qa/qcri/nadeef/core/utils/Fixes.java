@@ -23,6 +23,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -127,4 +128,33 @@ public class Fixes {
         }
         return result;
     }
-}
+
+    /**
+     * Pre-processing stage for a repair of single cell, modifies cell in RHS with values, makes them constant
+     * @param cell Cell to be repaired
+     * @param originalFixes
+     * @return list of Fix where all LHS is cell, all RHS is replaced with constants
+     */
+    public static Collection<Fix> substituteRHS(Cell cell, Collection<Fix> originalFixes) {
+        List<Fix> modifiedFixes = new ArrayList<>();
+        String attribute = cell.getColumn().getColumnName();
+        int tupleID = cell.getTid();
+
+
+        for(Fix originalFix : originalFixes) {
+            if(originalFix.getLeft().equals(cell)) {
+                // LHS is already this cell, replace RHS with its value
+                Fix newFix = new Fix.Builder().left(cell).right(originalFix.getRight().getValue().toString()).op(originalFix.getOperation()).vid(originalFix.getVid()).build();
+                modifiedFixes.add(newFix);
+            } else if(originalFix.getRight().equals(cell)) {
+                // RHS is the cell, swap first, then replace RHS with constant value
+                Fix newFix = new Fix.Builder().left(cell).right(originalFix.getLeft().getValue().toString()).op(originalFix.getOperation()).vid(originalFix.getVid()).build();
+                modifiedFixes.add(newFix);
+            } else {
+                // neither RHS or LHS is the cell, skip this
+            }
+        }
+
+        return modifiedFixes;
+    }
+ }

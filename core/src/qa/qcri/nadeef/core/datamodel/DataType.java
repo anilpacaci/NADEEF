@@ -24,7 +24,7 @@ public enum DataType {
     DOUBLE(2),
     FLOAT(3),
     BOOL(4),
-    TIMESTAMP(5);
+    TIMESTAMP(5), ;
 
     private final int value;
     private DataType(int value) {

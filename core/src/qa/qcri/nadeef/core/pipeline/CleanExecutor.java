@@ -335,7 +335,7 @@ public class CleanExecutor {
 
             // assemble guided-repair flow
             guidedRepairFlow = new Flow("guided-repair");
-            guidedRepairFlow.setInputKey(cacheManager.getKeyForNothing()).addNode(new GuidedRepair(context)).addNode(new TrainingInstanceExportToCSV(context));
+            guidedRepairFlow.setInputKey(cacheManager.getKeyForNothing()).addNode(new GuidedRepair(context)).addNode(new TrainingInstanceExportToARFF(context));
 
         } catch (Exception ex) {
             tracer.error("Exception happens during assembling the pipeline ", ex);

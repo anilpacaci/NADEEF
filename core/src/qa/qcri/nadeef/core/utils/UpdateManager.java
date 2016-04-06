@@ -13,17 +13,20 @@
 
 package qa.qcri.nadeef.core.utils;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.pipeline.DirectIteratorResultHandler;
 import qa.qcri.nadeef.core.pipeline.ExecutionContext;
+import qa.qcri.nadeef.core.pipeline.FixExport;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
 import qa.qcri.nadeef.tools.Logger;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 
@@ -39,7 +42,7 @@ public class UpdateManager {
 
     private static UpdateManager instance;
 
-    private HashMap<String, List<Rule>> ruleMap;
+    private HashMap<String, Rule> ruleMap;
     private List<Rule> ruleList;
 
     private UpdateManager() {
@@ -58,11 +61,19 @@ public class UpdateManager {
     public void addRule(Rule rule) {
         // build a hashmap from tuples attributes and rules
         ruleList.add(rule);
+        ruleMap.put(rule.getRuleName(), rule);
     }
 
     public void removeViolations(Cell updatedCell, ExecutionContext context) throws SQLException, IllegalAccessException, InstantiationException, ClassNotFoundException {
         // delete all existing violations of this cell
         String violationTableName = NadeefConfiguration.getViolationTableName();
+        String repairTableName = NadeefConfiguration.getRepairTableName();
+
+        String deleteRepairSQL = new StringBuilder().append("DELETE FROM ").
+            append(repairTableName).
+            append(" WHERE vid IN ( SELECT vid FROM ").append(violationTableName).
+            append(" where tupleid = ? AND attribute = ? )").
+            toString();
 
         String deleteViolationsSQL = new StringBuilder().append("DELETE FROM ").
             append(violationTableName).
@@ -70,16 +81,21 @@ public class UpdateManager {
             append(violationTableName).
             append(" where tupleid = ? AND attribute = ? )").toString();
 
-
         Connection conn = null;
         PreparedStatement stat = null;
         try {
             conn = DBConnectionPool.createConnection(context.getConnectionPool().getNadeefConfig());
+
+            stat = conn.prepareStatement(deleteRepairSQL);
+            stat.setInt(1, updatedCell.getTid());
+            stat.setString(2, updatedCell.getColumn().getColumnName());
+            int res = stat.executeUpdate();
+
             stat = conn.prepareStatement(deleteViolationsSQL);
             stat.setInt(1, updatedCell.getTid());
             stat.setString(2, updatedCell.getColumn().getColumnName());
+            res = stat.executeUpdate();
 
-            int res = stat.executeUpdate();
             conn.commit();
             tracer.fine(res + " violations have been deleted.");
 
@@ -101,6 +117,7 @@ public class UpdateManager {
         // check if this new cell creates a new violation
 
         NonBlockingCollectionIterator<Violation> outputIterator = new NonBlockingCollectionIterator<>();
+        Collection<Collection<Fix>> newRepairs = Lists.newArrayList();
 
         for (Rule rule : ruleList) {
 
@@ -120,8 +137,8 @@ public class UpdateManager {
             rule.iterator(tableList, newTuples, directIteratorResultHandler);
 
             //now outputIterator contains newly detected violation. We just need to serialize them into database
+
         }
-        // new have obtained all new violation. Now export them to the database
 
         Connection conn = null;
         PreparedStatement stat = null;
@@ -134,6 +151,7 @@ public class UpdateManager {
             int count = 0;
             while (outputIterator.hasNext()) {
                 Violation violation = outputIterator.next();
+                violation.setVid(vid);
                 count++;
                 Collection<Cell> cells = violation.getCells();
                 for (Cell cell : cells) {
@@ -166,6 +184,40 @@ public class UpdateManager {
         } finally {
             if (stat != null) {
                 stat.close();
+            }
+            if (conn != null) {
+                conn.close();
+            }
+        }
+
+        // new have obtained all new violation. Now export them to the database
+        while(outputIterator.hasNext()) {
+            Violation violation = outputIterator.next();
+            Rule rule = ruleMap.get(violation.getRuleId());
+
+            Collection fixes = rule.repair(violation);
+            newRepairs.add(fixes);
+        }
+
+        // now insert newRepairs into repair table
+        Statement statement = null;
+        try {
+            conn = connectionPool.getNadeefConnection();
+            statement = conn.createStatement();
+            int id = Fixes.generateFixId(connectionPool);
+            for (Collection<Fix> fixes : newRepairs) {
+                for (Fix fix : fixes) {
+                    String sql = FixExport.getSQLInsert(id, fix);
+                    statement.addBatch(sql);
+                }
+                id ++;
+            }
+            statement.executeBatch();
+            conn.commit();
+
+        } finally {
+            if (statement != null) {
+                statement.close();
             }
             if (conn != null) {
                 conn.close();

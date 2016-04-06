@@ -30,7 +30,7 @@ import java.util.Collection;
  * Export fix into the repair database.
  *
  */
-class FixExport extends Operator<Collection<Collection<Fix>>, Integer> {
+public class FixExport extends Operator<Collection<Collection<Fix>>, Integer> {
     private static Logger tracer = Logger.getLogger(FixExport.class);
 
     /**
@@ -92,7 +92,7 @@ class FixExport extends Operator<Collection<Collection<Fix>>, Integer> {
     /**
      * Converts a violation to SQL insert.
      */
-    private String getSQLInsert(int id, Fix fix) {
+    public static String getSQLInsert(int id, Fix fix) {
         int vid = fix.getVid();
         StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ");
         sqlBuilder

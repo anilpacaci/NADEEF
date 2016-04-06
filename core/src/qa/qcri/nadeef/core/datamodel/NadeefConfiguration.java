@@ -25,9 +25,7 @@ import qa.qcri.nadeef.tools.sql.SQLDialectTools;
 import java.io.File;
 import java.io.Reader;
 import java.nio.file.Path;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Properties;
+import java.util.*;
 
 /**
  * NADEEF configuration class.
@@ -251,5 +249,9 @@ public final class NadeefConfiguration {
      */
     public static String getCellDegreeViewName() {
         return "CELL_DEGREE";
+    }
+
+    public static List<String> getMLAttributes() {
+       return Arrays.asList(properties.getProperty("ml.attributes", "").split(","));
     }
 }

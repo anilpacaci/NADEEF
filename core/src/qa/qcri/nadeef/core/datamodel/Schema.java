@@ -157,6 +157,19 @@ public class Schema {
     }
 
     /**
+     * Gets the column type collection based on column names.
+     * @return column type collection.
+     */
+    public DataType getType(String column) {
+        for (int i = 0; i < columns.length; i ++) {
+            if (columns[i].getColumnName().equalsIgnoreCase(column)) {
+                return types[i];
+            }
+        }
+        throw new IllegalArgumentException("Cannot find the column.");
+    }
+
+    /**
      * Gets the index from the column.
      * @param column input column.
      * @return Get the index from column.

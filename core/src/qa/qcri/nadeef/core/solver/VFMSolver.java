@@ -11,18 +11,16 @@
  * NADEEF is released under the terms of the MIT License, (http://opensource.org/licenses/MIT).
  */
 
-package qa.qcri.nadeef.lab.hc;
+package qa.qcri.nadeef.core.solver;
 
 import com.google.common.collect.*;
 import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.Fix;
 import qa.qcri.nadeef.core.datamodel.Operation;
-import qa.qcri.nadeef.core.pipeline.Iterator;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Value Frequency Solver. It is a solver to deal with EQ / NEQ only

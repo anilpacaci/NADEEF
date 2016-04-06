@@ -11,7 +11,7 @@
  * NADEEF is released under the terms of the MIT License, (http://opensource.org/licenses/MIT).
  */
 
-package qa.qcri.nadeef.lab.hc.test;
+package qa.qcri.nadeef.test.solver;
 
 public class HolisticCleaningTest {
 

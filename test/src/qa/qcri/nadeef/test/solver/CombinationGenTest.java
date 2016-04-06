@@ -11,10 +11,10 @@
  * NADEEF is released under the terms of the MIT License, (http://opensource.org/licenses/MIT).
  */
 
-package qa.qcri.nadeef.lab.hc.test;
+package qa.qcri.nadeef.test.solver;
 
 import org.junit.Test;
-import qa.qcri.nadeef.lab.hc.CombinationGenerator;
+import qa.qcri.nadeef.core.solver.CombinationGenerator;
 
 import java.util.ArrayList;
 import java.util.HashSet;

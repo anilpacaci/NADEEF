@@ -18,6 +18,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
+import qa.qcri.nadeef.core.solver.HolisticCleaning;
 import qa.qcri.nadeef.core.utils.Fixes;
 import qa.qcri.nadeef.core.utils.UpdateManager;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
@@ -60,6 +61,9 @@ public class GuidedRepair
     public Collection<TrainingInstance> execute(Optional emptyInput)
         throws Exception {
         Stopwatch stopwatch = Stopwatch.createStarted();
+
+        HolisticCleaning solver = new HolisticCleaning(getCurrentContext());
+
         Rule rule = getCurrentContext().getRule();
         DBConfig dbConfig = getCurrentContext().getConnectionPool().getSourceDBConfig();
         SQLDialect dialect = dbConfig.getDialect();
@@ -98,17 +102,17 @@ public class GuidedRepair
                     cleanCell = getDatabaseCell(dbConfig, cleanTableName, tupleID, attributeName);
                     rs = stat.executeQuery(dialectManager.selectCell(dirtyTableName, tupleID, attributeName));
 
-                    String cleanValue = cleanCell.getValue().toString();
-                    String dirtyValue = dirtyTuple.getCell(attributeName).getValue().toString();
+                    Object cleanValue = cleanCell.getValue();
+                    Object dirtyValue = dirtyTuple.getCell(attributeName).getValue();
 
                     //Get all possible Fixes from repair table, then invoke holistic repair
                     // TODO: for now, we calculate holistic repair but discard result
                     Collection<Fix> repairExpressions = getFixesOfCell(dbConfig, dirtyTuple.getCell(attributeName));
-                    Collection<Fix> solutions = new SatSolver(getCurrentContext()).decide(repairExpressions);
+                    Collection<Fix> solutions = solver.decide(repairExpressions);
                     Fix solution = new ArrayList<>(solutions).get(0);
                     Fix randomFix;
 
-                    if (!cleanValue.equals(dirtyValue)) {
+                    if (!cleanValue.toString().equals(dirtyValue.toString())) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
                         offset = 0;
 
@@ -117,7 +121,7 @@ public class GuidedRepair
 
                         String updateCellSQL = new StringBuilder("UPDATE ").append(dirtyTableName).append(" SET ").append(attributeName).append(" = ?").append(" where tid = ?").toString();
                         PreparedStatement updateStatement = conn.prepareStatement(updateCellSQL);
-                        updateStatement.setObject(1, solution.getRightValue());
+                        updateStatement.setObject(1, cleanValue);
                         updateStatement.setInt(2, tupleID);
 
                         int res = updateStatement.executeUpdate();

@@ -26,6 +26,7 @@
       </library>
     </orderEntry>
     <orderEntry type="library" name="nz.ac.waikato.cms.weka:weka-stable:3.6.13" level="project" />
+    <orderEntry type="library" name="gurobi" level="project" />
   </component>
   <component name="org.twodividedbyzero.idea.findbugs">
     <option name="_basePreferences">

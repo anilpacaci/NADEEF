@@ -11,7 +11,7 @@
  * NADEEF is released under the terms of the MIT License, (http://opensource.org/licenses/MIT).
  */
 
-package qa.qcri.nadeef.lab.hc;
+package qa.qcri.nadeef.core.solver;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;

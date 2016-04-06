@@ -11,7 +11,7 @@
  * NADEEF is released under the terms of the MIT License, (http://opensource.org/licenses/MIT).
  */
 
-package qa.qcri.nadeef.lab.hc.test;
+package qa.qcri.nadeef.test.solver;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -19,8 +19,8 @@ import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.Column;
 import qa.qcri.nadeef.core.datamodel.Fix;
 import qa.qcri.nadeef.core.datamodel.Operation;
-import qa.qcri.nadeef.lab.hc.GurobiSolver;
-import qa.qcri.nadeef.lab.hc.HolisticCleaning;
+import qa.qcri.nadeef.core.solver.GurobiSolver;
+import qa.qcri.nadeef.core.solver.HolisticCleaning;
 
 import java.util.ArrayList;
 import java.util.HashSet;

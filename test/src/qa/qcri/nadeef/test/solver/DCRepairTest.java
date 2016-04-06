@@ -11,7 +11,7 @@
  * NADEEF is released under the terms of the MIT License, (http://opensource.org/licenses/MIT).
  */
 
-package qa.qcri.nadeef.lab.hc.test;
+package qa.qcri.nadeef.test.solver;
 
 import com.google.gson.JsonObject;
 import org.junit.After;
@@ -26,7 +26,7 @@ import qa.qcri.nadeef.core.pipeline.UpdateExecutor;
 import qa.qcri.nadeef.core.utils.Bootstrap;
 import qa.qcri.nadeef.core.utils.Violations;
 import qa.qcri.nadeef.core.utils.sql.DBInstaller;
-import qa.qcri.nadeef.lab.hc.HolisticCleaning;
+import qa.qcri.nadeef.core.solver.HolisticCleaning;
 import qa.qcri.nadeef.tools.DBConfig;
 
 public class DCRepairTest {

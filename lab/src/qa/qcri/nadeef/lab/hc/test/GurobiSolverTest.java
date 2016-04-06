@@ -27,6 +27,53 @@ import java.util.HashSet;
 import java.util.List;
 
 public class GurobiSolverTest {
+    public static void main(String[] args){
+        // We are testing
+        //      t.a > t.b, t.b > t.c
+        //      t.a has value 2
+        //      t.b has value 4
+        //      t.c has value 6
+        //      t.a > 3
+        //      t.b != 5
+        HashSet<Fix> fixSet = new HashSet<Fix>();
+        Fix.Builder builder = new Fix.Builder();
+        Cell ta = new Cell(new Column("T", "A"), 1, 12.0);
+        Cell tb = new Cell(new Column("T", "B"), 1, 4.0);
+
+//        fixSet.add(builder.left(ta).right(-1.0).op(Operation.LT).build());
+//        fixSet.add(builder.left(ta).right(-3.0).op(Operation.LT).build());
+//        fixSet.add(builder.left(ta).right(-4.0).op(Operation.LT).build());
+//        fixSet.add(builder.left(ta).right(-5.6).op(Operation.LT).build());
+        fixSet.add(builder.left(ta).right(20.0).op(Operation.GT).build());
+//        fixSet.add(builder.left(ta).right(2.0).op(Operation.LT).build());
+        fixSet.add(builder.left(ta).right(2.0).op(Operation.GT).build());
+        fixSet.add(builder.left(ta).right(1.0).op(Operation.EQ).build());
+        fixSet.add(builder.left(ta).right(1.0).op(Operation.EQ).build());
+        fixSet.add(builder.left(ta).right(1.0).op(Operation.NEQ).build());
+        fixSet.add(builder.left(ta).right(1.0).op(Operation.NEQ).build());
+//        fixSet.add(builder.left(ta).right(1.0).op(Operation.GTE).build());
+//        fixSet.add(builder.left(ta).right(1.0).op(Operation.GTE).build());
+
+//        fixSet.add(builder.left(ta).right(13.1).op(Operation.GT).build());
+//        fixSet.add(builder.left(tb).right(ta).op(Operation.GT).build());
+        // fixSet.add(builder.left(tb).right(5).op(Operation.NEQ).build());
+//        fixSet.add(builder.left(ta).right(tb).op(Operation.NEQ).build());
+//        fixSet.add(builder.left(ta).right(tb).op(Operation.NEQ).build());
+//        fixSet.add(builder.left(ta).right(tb).op(Operation.NEQ).build());
+//        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
+//        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
+//        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
+//        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
+        List<Fix> result = new GurobiSolver().solve(fixSet);
+        double va=0.0, vb=0.0;
+        for (Fix fix : result) {
+            if (fix.getLeft().equals(ta))
+                va = Double.parseDouble(fix.getRightValue());
+            if (fix.getLeft().equals(tb))
+                vb = Double.parseDouble(fix.getRightValue());
+        }
+        System.out.println(va + " " + vb);
+    }
     @Test
     public void simpleTest1() {
         // We are testing

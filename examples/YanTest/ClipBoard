@@ -1,0 +1,20 @@
+load examples/YanTest/load.json
+
+load examples/example1.json
+
+delete from violation;
+delete from repair;
+delete from audit;
+
+./grbgetkey 7e7656fc-0535-9acf-72a6-57019a5c7e1b
+
+-Djava.library.path=/u4/y997zhang/Projects/NADEEF/gurobi651/linux64/lib/
+
+select tupleid, rid, count(distinct vid) as count from violation group by tupleid, rid order by rid asc, count desc;
+
+select * from tb_tax1knoise where tid in (270,727,571);
+
+//vio sql
+select tupleid from tuple_degree where degree in (select degree from tuple_degree limit 1);
+
+

@@ -1,0 +1,22 @@
+{
+    "source" : {
+        "type" : "csv",
+        "file" : [
+            "./examples/YanTest/data.csv"
+        ]
+    },
+    "rule" : [
+        {
+            "type" : "dc",
+            "value" : ["not(t1.Salary<=1200)"]
+        },
+	{
+            "type" : "dc",
+            "value" : ["not(t1.Salary>=800)"]
+        },
+	{
+            "type" : "dc",
+            "value" : ["not(t1.Salary<=1100)"]
+        }
+    ]
+}

@@ -17,6 +17,7 @@ import com.google.common.collect.*;
 import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.Fix;
 import qa.qcri.nadeef.core.datamodel.Operation;
+import qa.qcri.nadeef.core.pipeline.Iterator;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -32,13 +33,59 @@ public class VFMSolver extends SolverBase {
     @Override
     public List<Fix> solve(HashSet<Fix> repairContext, HashSet<Cell> changed) {
         HashSet<Cell> cells = Sets.newHashSet();
-        HashMap<Object, Integer> countMap = Maps.newHashMap();
+        HashMap<String, Integer> countMap = Maps.newHashMap();
+//        Object original=null;
+        for (Fix fix : repairContext) {
+//            original=fix.getLeft().getValue();
+            if (fix.isRightConstant()) {
+                if(fix.getOperation().equals(Operation.EQ))
+                    createOrAdd(countMap, fix.getRightValue());
+                else
+                    createOrDeduct(countMap,fix.getRightValue());
+                cells.add(fix.getLeft());
+            }
+            // not in use
+            else {
+                cells.add(fix.getLeft());
+                createOrAdd(countMap, fix.getLeft().getValue());
+                cells.add(fix.getRight());
+                createOrAdd(countMap, fix.getRight().getValue());
+            }
+        }
+        java.util.Iterator<Cell> iter=cells.iterator();
+        String original=iter.next().getValue().toString();
+        int maxCount = 0; String solution=original;
+        if(countMap.containsKey(original) && countMap.get(original)<0)
+            solution="";
+        for(String o:countMap.keySet()){
+            if(countMap.get(o)>=maxCount){
+                maxCount=countMap.get(o);
+                solution=o;
+            }
+        }
+        List<Fix> result = Lists.newArrayList();
+
+        Fix.Builder builder = new Fix.Builder();
+            for (Cell cell : cells) {
+                result.add(
+                    builder
+                        .left(cell)
+                        .right(solution)
+                        .op(Operation.EQ)
+                        .build()
+                );
+            }
+
+        return result;
+
 
         // executing VFM
         // we start with counting both the EQ and NEQ.
         // TODO: we don't know how to deal with NEQ.
         // When there are only NEQ, we need to assign an variable class.
-        for (Fix fix : repairContext) {
+
+
+        /*for (Fix fix : repairContext) {
             if (fix.isRightConstant()) {
                 createOrAdd(countMap, fix.getRightValue());
                 cells.add(fix.getLeft());
@@ -90,15 +137,23 @@ public class VFMSolver extends SolverBase {
                 );
             }
         }
-        return result;
+        return result;*/
     }
 
-    private void createOrAdd(HashMap<Object, Integer> map, Object key) {
+    private void createOrAdd(HashMap<String, Integer> map, String key) {
         if (map.containsKey(key)) {
             int count = map.get(key);
             map.put(key, count + 1);
         } else {
             map.put(key, 1);
+        }
+    }
+    private void createOrDeduct(HashMap<String, Integer> map, String key) {
+        if (map.containsKey(key)) {
+            int count = map.get(key);
+            map.put(key, count - 1);
+        } else {
+            map.put(key, -1);
         }
     }
 }

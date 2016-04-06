@@ -26,6 +26,18 @@ import java.util.HashSet;
 import java.util.List;
 
 public class VFMTest {
+    public static void  main(String[] args){
+        Cell ta = new Cell(new Column("T", "A"), 1, 2);
+        HashSet<Fix> fixes = Sets.newHashSet();
+        Fix.Builder builder = new Fix.Builder();
+        for (int i = 0; i < 10; i ++)
+            fixes.add(builder.left(ta).op(Operation.NEQ).right(2).build());
+
+        for (int i = 0; i < 5; i ++)
+            fixes.add(builder.left(ta).op(Operation.EQ).right(2).build());
+        List<Fix> result = new VFMSolver().solve(fixes);
+        System.out.println(result.get(0).getRightValue());
+    }
     @Test
     public void simpleTest() {
         // simulate a counting test

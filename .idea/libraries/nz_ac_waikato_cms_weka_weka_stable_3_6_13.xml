@@ -4,6 +4,8 @@
     <CLASSES>
       <root url="jar://$MAVEN_REPOSITORY$/nz/ac/waikato/cms/weka/weka-stable/3.6.13/weka-stable-3.6.13.jar!/" />
       <root url="jar://$MAVEN_REPOSITORY$/net/sf/squirrel-sql/thirdparty-non-maven/java-cup/0.11a/java-cup-0.11a.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/nz/ac/waikato/cms/weka/weka-stable/3.6.13/weka-stable-3.6.13.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/net/sf/squirrel-sql/thirdparty-non-maven/java-cup/0.11a/java-cup-0.11a.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES />

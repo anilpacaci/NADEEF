@@ -105,8 +105,9 @@ public class GuidedRepair
                     // TODO: for now, we calculate holistic repair but discard result
                     Collection<Fix> repairExpressions = getFixesOfCell(dbConfig, dirtyTuple.getCell(attributeName));
                     Collection<Fix> solutions = new SatSolver(getCurrentContext()).decide(repairExpressions);
-                    
-                    
+                    Fix solution = new ArrayList<>(solutions).get(0);
+                    Fix randomFix;
+
                     if (!cleanValue.equals(dirtyValue)) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
                         offset = 0;
@@ -116,7 +117,7 @@ public class GuidedRepair
 
                         String updateCellSQL = new StringBuilder("UPDATE ").append(dirtyTableName).append(" SET ").append(attributeName).append(" = ?").append(" where tid = ?").toString();
                         PreparedStatement updateStatement = conn.prepareStatement(updateCellSQL);
-                        updateStatement.setObject(1, cleanCell.getValue());
+                        updateStatement.setObject(1, solution.getRightValue());
                         updateStatement.setInt(2, tupleID);
 
                         int res = updateStatement.executeUpdate();

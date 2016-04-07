@@ -23,6 +23,7 @@ import qa.qcri.nadeef.core.solver.GurobiSolver;
 import qa.qcri.nadeef.core.solver.HolisticCleaning;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 
@@ -64,7 +65,7 @@ public class GurobiSolverTest {
 //        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
 //        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
 //        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
-        List<Fix> result = new GurobiSolver().solve(fixSet);
+        Collection<Fix> result = new HolisticCleaning(null).decide(fixSet);
         double va=0.0, vb=0.0;
         for (Fix fix : result) {
             if (fix.getLeft().equals(ta))

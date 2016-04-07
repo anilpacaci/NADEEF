@@ -20,8 +20,10 @@ import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.Column;
 import qa.qcri.nadeef.core.datamodel.Fix;
 import qa.qcri.nadeef.core.datamodel.Operation;
+import qa.qcri.nadeef.core.solver.HolisticCleaning;
 import qa.qcri.nadeef.core.solver.VFMSolver;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 
@@ -31,12 +33,14 @@ public class VFMTest {
         HashSet<Fix> fixes = Sets.newHashSet();
         Fix.Builder builder = new Fix.Builder();
         for (int i = 0; i < 10; i ++)
-            fixes.add(builder.left(ta).op(Operation.NEQ).right(2).build());
+            fixes.add(builder.left(ta).op(Operation.EQ).right(200).build());
 
         for (int i = 0; i < 5; i ++)
             fixes.add(builder.left(ta).op(Operation.EQ).right(2).build());
-        List<Fix> result = new VFMSolver().solve(fixes);
-        System.out.println(result.get(0).getRightValue());
+        Collection<Fix> result = new HolisticCleaning(null).decide(fixes);
+//        List<Fix> result = new VFMSolver().solve(fixes);
+        for(Fix fix:result)
+        System.out.println(fix.getRightValue());
     }
     @Test
     public void simpleTest() {

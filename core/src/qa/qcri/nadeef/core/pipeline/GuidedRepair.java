@@ -62,8 +62,6 @@ public class GuidedRepair
         throws Exception {
         Stopwatch stopwatch = Stopwatch.createStarted();
 
-        HolisticCleaning solver = new HolisticCleaning(getCurrentContext());
-
         Rule rule = getCurrentContext().getRule();
         DBConfig dbConfig = getCurrentContext().getConnectionPool().getSourceDBConfig();
         SQLDialect dialect = dbConfig.getDialect();
@@ -108,7 +106,7 @@ public class GuidedRepair
                     //Get all possible Fixes from repair table, then invoke holistic repair
                     // TODO: for now, we calculate holistic repair but discard result
                     Collection<Fix> repairExpressions = getFixesOfCell(dbConfig, dirtyTuple.getCell(attributeName));
-                    Collection<Fix> solutions = solver.decide(repairExpressions);
+                    Collection<Fix> solutions = new HolisticCleaning(getCurrentContext()).decide(repairExpressions);
                     Fix solution = new ArrayList<>(solutions).get(0);
                     Fix randomFix;
 

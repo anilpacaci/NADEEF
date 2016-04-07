@@ -154,7 +154,8 @@ public class Fixes {
                 modifiedFixes.add(newFix);
             } else if(originalFix.getRight().equals(cell)) {
                 // RHS is the cell, swap first, then replace RHS with constant value
-                Fix newFix = new Fix.Builder().left(cell).right(originalFix.getLeft().getValue().toString()).op(originalFix.getOperation()).vid(originalFix.getVid()).build();
+
+                Fix newFix = new Fix.Builder().left(cell).right(originalFix.getLeft().getValue().toString()).op(originalFix.getOperation().getRevertedOpertion()).vid(originalFix.getVid()).build();
                 modifiedFixes.add(newFix);
             } else {
                 // neither RHS or LHS is the cell, skip this

@@ -15,6 +15,7 @@ package qa.qcri.nadeef.core.utils;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
 import qa.qcri.nadeef.core.pipeline.ExecutionContext;
@@ -23,10 +24,7 @@ import qa.qcri.nadeef.tools.DBConfig;
 import qa.qcri.nadeef.tools.Logger;
 
 import java.sql.*;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * It is used to rank updates (VOI - F1/F2 etc).
@@ -41,16 +39,19 @@ public class RankingManager {
     private String dirtyTableName;
     private String cleanTableName;
     private List<RepairGroup> repairGroups;
+    private Set<String> finishedGroups;
 
     public RankingManager(ExecutionContext context, String dirtyTableName, String cleanTableName) {
         this.context = context;
         this.dirtyTableName = dirtyTableName;
         this.cleanTableName = cleanTableName;
         this.repairGroups = Lists.newArrayList();
+        this.finishedGroups= Sets.newHashSet();
     }
 
 
     public RepairGroup getTopGroup() throws NadeefDatabaseException {
+        repairGroups.clear();
         DBConfig dbConfig = context.getConnectionPool().getNadeefConfig();
         Connection conn;
         Statement stat;
@@ -71,6 +72,7 @@ public class RankingManager {
             }
             rs.close();
             stat.close();
+            conn.close();
 
             for(String attribute: attributes) {
                 RepairGroup repairGroup = new RepairGroup(attribute, this.dirtyTableName, this.context);
@@ -80,7 +82,13 @@ public class RankingManager {
 
             Collections.sort(repairGroups);
 
-            return repairGroups.get(0);
+            for(int i=0;i<repairGroups.size();i++){
+                if(!finishedGroups.contains(repairGroups.get(i).getName())){
+                    finishedGroups.add(repairGroups.get(i).getName());
+                    return repairGroups.get(i);
+                }
+            }
+            return null;
         } catch (Exception e) {
             tracer.error("Cells could NOT be ordered");
             throw new NadeefDatabaseException(e);

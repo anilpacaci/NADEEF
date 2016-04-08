@@ -15,20 +15,23 @@ package qa.qcri.nadeef.core.solver;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import gurobi.*;
 import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.Fix;
 import qa.qcri.nadeef.core.datamodel.Operation;
 import qa.qcri.nadeef.tools.Logger;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
-public class GurobiSolver extends SolverBase {
+public class GurobiSolver {
     private Logger tracer = Logger.getLogger(GurobiSolver.class);
+    double precision=0.00001;
 
-    private List<Fix> consistentSolve(HashSet<Fix> repairContext){
+    private List<Fix> consistentSolve(Collection<Fix> repairContext, boolean isInteger){
         HashSet<Cell> changedCell = new HashSet<>();
         for (Fix fix : repairContext) {
             changedCell.add(fix.getLeft());
@@ -41,7 +44,6 @@ public class GurobiSolver extends SolverBase {
 
         GRBEnv env = null;
         GRBModel model = null;
-        double precision=0.001;
         try {
             env = new GRBEnv();
             env.set(GRB.IntParam.LogToConsole, 0);
@@ -65,14 +67,26 @@ public class GurobiSolver extends SolverBase {
                     if (cellIndex.containsKey(cell))
                         var1 = cellIndex.get(cell);
                     else {
-                        var1 =
-                            model.addVar(
-                                -Double.MAX_VALUE,
-                                Double.MAX_VALUE,
-                                0.0,
-                                GRB.CONTINUOUS,
-                                cell.getColumn().getColumnName()
-                            );
+                        if(isInteger){
+                            var1 =
+                                model.addVar(
+                                    Integer.MIN_VALUE,
+                                    Integer.MAX_VALUE,
+                                    0.0,
+                                    GRB.INTEGER,
+                                    cell.getColumn().getColumnName()
+                                );
+                        }
+                        else {
+                            var1 =
+                                model.addVar(
+                                    -Double.MAX_VALUE,
+                                    Double.MAX_VALUE,
+                                    0.0,
+                                    GRB.CONTINUOUS,
+                                    cell.getColumn().getColumnName()
+                                );
+                        }
                         cellIndex.put(cell, var1);
                         varIndex.put(var1, cell);
                     }
@@ -228,14 +242,19 @@ public class GurobiSolver extends SolverBase {
             return null;
     }
 
-    public List<Fix> solve(HashSet<Fix> repairContext, HashSet<Cell> changedCell) {
+    public List<Fix> solve(Collection<Fix> repairContext, boolean isInteger) {
+        HashSet<Cell> changedCell = Sets.newHashSet();
+        for (Fix fix : repairContext) {
+            changedCell.add(fix.getLeft());
+            if (!fix.isRightConstant())
+                changedCell.add(fix.getRight());
+        }
         tracer.fine("Probing: ");
         for (Cell cell : changedCell)
             tracer.fine(cell.getColumn().getFullColumnName() + ":" + cell.getTid());
 
         GRBEnv env = null;
         GRBModel model = null;
-        double precision=0.001;
         try {
             env = new GRBEnv();
             env.set(GRB.IntParam.LogToConsole, 0);
@@ -259,14 +278,26 @@ public class GurobiSolver extends SolverBase {
                     if (cellIndex.containsKey(cell))
                         var1 = cellIndex.get(cell);
                     else {
-                        var1 =
-                            model.addVar(
-                                -Double.MAX_VALUE,
-                                Double.MAX_VALUE,
-                                0.0,
-                                GRB.CONTINUOUS,
-                                cell.getColumn().getColumnName()
-                            );
+                        if(isInteger){
+                            var1 =
+                                model.addVar(
+                                    Integer.MIN_VALUE,
+                                    Integer.MAX_VALUE,
+                                    0.0,
+                                    GRB.INTEGER,
+                                    cell.getColumn().getColumnName()
+                                );
+                        }
+                        else {
+                            var1 =
+                                model.addVar(
+                                    -Double.MAX_VALUE,
+                                    Double.MAX_VALUE,
+                                    0.0,
+                                    GRB.CONTINUOUS,
+                                    cell.getColumn().getColumnName()
+                                );
+                        }
                         cellIndex.put(cell, var1);
                         varIndex.put(var1, cell);
                     }
@@ -537,14 +568,14 @@ public class GurobiSolver extends SolverBase {
 //                        }
                     }
                 }
-                return consistentSolve(consistentRepairContext);
+                return consistentSolve(consistentRepairContext, isInteger);
 //                model.reset();
 //                model=model2;
 //                model.update();
 
             }
 //            if(true)
-            return consistentSolve(repairContext);
+            return consistentSolve(repairContext, isInteger);
 //            model.reset();
 //            model.update();
 ////            int numconstrs=model2.get(GRB.IntAttr.NumConstrs);

@@ -19,7 +19,9 @@ import com.google.common.collect.Lists;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
 import qa.qcri.nadeef.core.solver.HolisticCleaning;
+import qa.qcri.nadeef.core.utils.AuditManager;
 import qa.qcri.nadeef.core.utils.Fixes;
+import qa.qcri.nadeef.core.utils.RankingManager;
 import qa.qcri.nadeef.core.utils.UpdateManager;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
 import qa.qcri.nadeef.core.utils.sql.DBMetaDataTool;
@@ -78,6 +80,9 @@ public class GuidedRepair
         String dirtyTableName = (String) getCurrentContext().getRule().getTableNames().get(0);
         String cleanTableName = dirtyTableName.replace("NOISE", "CLEAN").replace("noise", "clean");
 
+        RankingManager rankingManager = new RankingManager(getCurrentContext(), dirtyTableName, cleanTableName);
+        AuditManager auditManager = new AuditManager(getCurrentContext());
+
         Connection conn = DBConnectionPool.createConnection(dbConfig);
         Statement stat = conn.createStatement();
 
@@ -85,30 +90,41 @@ public class GuidedRepair
 
         try {
             while (true) {
+                //when next group, offset may still be the last offset of last group, reset it to 0
+                offset=0;
+                RepairGroup topGroup = rankingManager.getTopGroup();
+                if(topGroup == null) {
+                    // no more repair groups. break
+                    break;
+                }
 
-                ResultSet rs = stat.executeQuery(dialectManager.nextRepairCell(NadeefConfiguration.getViolationTableName(), NadeefConfiguration.getCellDegreeViewName(), NadeefConfiguration.getTupleDegreeViewName(), offset));
-                if (rs.next()) {
-                    int tupleID = rs.getInt("tupleid");
-                    String attributeName = rs.getString("attribute");
-                    rs.close();
+                while(topGroup.hasNext(offset)) {
+                    Fix solution = topGroup.getTopFix(offset);
+                    String suggestedValue=solution.getRightValue();
 
-                    Cell cleanCell;
-                    Tuple dirtyTuple;
+                    if(auditManager.isAlreadyUpdated(solution.getLeft())) {
+                        // if cell is already udpated, we do not update it again. We directly skip it
+                        offset++;
+                        continue;
+                    }
+
+                    int tupleID = solution.getLeft().getTid();
+                    String attribute = solution.getLeft().getColumn().getColumnName();
+                    Object solutionValue;
 
                     // user interaction, simulate user interaction by checking from clean dataset, ground truth
-                    dirtyTuple = getDatabaseTuple(dbConfig, dirtyTableName, tupleID);
-                    cleanCell = getDatabaseCell(dbConfig, cleanTableName, tupleID, attributeName);
-                    rs = stat.executeQuery(dialectManager.selectCell(dirtyTableName, tupleID, attributeName));
+                    Tuple dirtyTuple = getDatabaseTuple(dbConfig, dirtyTableName, tupleID);
+                    Cell cleanCell = getDatabaseCell(dbConfig, cleanTableName, tupleID, attribute);
 
                     Object cleanValue = cleanCell.getValue();
-                    Object dirtyValue = dirtyTuple.getCell(attributeName).getValue();
+                    Object dirtyValue = dirtyTuple.getCell(attribute).getValue();
 
-                    //Get all possible Fixes from repair table, then invoke holistic repair
-                    // TODO: for now, we calculate holistic repair but discard result
-                    Collection<Fix> repairExpressions = getFixesOfCell(dbConfig, dirtyTuple.getCell(attributeName));
-                    Collection<Fix> solutions = new HolisticCleaning(getCurrentContext()).decide(repairExpressions);
-                    Fix solution = new ArrayList<>(solutions).get(0);
-                    Fix randomFix;
+                    // GurobiSolver returns numerical answers in form of Double. We need to distinguish true integers
+                    if(dirtyValue instanceof Integer) {
+                        solutionValue = Math.round(Double.parseDouble(solution.getRightValue()));
+                    } else {
+                        solutionValue = solution.getRightValue();
+                    }
 
                     if (!cleanValue.toString().equals(dirtyValue.toString())) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
@@ -117,43 +133,29 @@ public class GuidedRepair
                         // increase hit count
                         hitCount++;
 
-                        String updateCellSQL = new StringBuilder("UPDATE ").append(dirtyTableName).append(" SET ").append(attributeName).append(" = ?").append(" where tid = ?").toString();
-                        PreparedStatement updateStatement = conn.prepareStatement(updateCellSQL);
-                        updateStatement.setObject(1, cleanValue);
-                        updateStatement.setInt(2, tupleID);
-
-                        int res = updateStatement.executeUpdate();
-                        updateStatement.close();
-                        conn.commit();
-                        if(res == 0) {
-                            // update is not succesfull
-                            throw new Exception("Database could NOT be updated to clean value: " + cleanCell.getValue() + " on tuple: " + tupleID);
-                        }
+                        auditManager.applyFix(solution);
 
                         // add positive training instance
                         trainingInstances.add(new TrainingInstance(TrainingInstance.Label.YES, dirtyTuple, cleanCell, 0));
 
                         // call UpdateManager to recompute violatios
-                        Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attributeName)).value(cleanCell.getValue()).build();
+                        Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attribute)).value(cleanCell.getValue()).build();
                         // remove existing violations
                         UpdateManager.getInstance().removeViolations(updatedCell, getCurrentContext());
                         // find new violations
                         UpdateManager.getInstance().findNewViolations(updatedCell, getCurrentContext());
+
+                        topGroup.populateFix();
                     } else {
                         // just increase the offset to retrieve the nextrepaircell
                         offset++;
                         if(offset > 20) {
-                            System.out.println("Count:" + userInteractionCount + " Offset:" + offset + " tupleid:" + tupleID + " attribute:" + attributeName + " currentValue:" + dirtyTuple.getCell(attributeName).getValue());
+                            System.out.println("Count:" + userInteractionCount + " Offset:" + offset + " tupleid:" + tupleID + " attribute:" + attribute + " currentValue:" + dirtyTuple.getCell(attribute).getValue());
                         }
                         // add negative training instance
                         trainingInstances.add(new TrainingInstance(TrainingInstance.Label.NO, dirtyTuple, cleanCell, 0));
                     }
-
                     userInteractionCount++;
-                    continue;
-                } else {
-                    // there is no more violation, cells involved in violation, so break the loop
-                    break;
                 }
             }
         } catch (Exception e) {

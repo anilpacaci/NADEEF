@@ -140,6 +140,7 @@ public class UpdateManager {
 
         }
 
+
         Connection conn = null;
         PreparedStatement stat = null;
         DBConnectionPool connectionPool = context.getConnectionPool();
@@ -176,6 +177,13 @@ public class UpdateManager {
                 if (count % 4096 == 0) {
                     stat.executeBatch();
                 }
+
+                // generate fixes for this violation
+                Rule rule = ruleMap.get(violation.getRuleId());
+
+                Collection fixes = rule.repair(violation);
+                newRepairs.add(fixes);
+
                 vid++;
             }
             stat.executeBatch();
@@ -188,15 +196,6 @@ public class UpdateManager {
             if (conn != null) {
                 conn.close();
             }
-        }
-
-        // new have obtained all new violation. Now export them to the database
-        while(outputIterator.hasNext()) {
-            Violation violation = outputIterator.next();
-            Rule rule = ruleMap.get(violation.getRuleId());
-
-            Collection fixes = rule.repair(violation);
-            newRepairs.add(fixes);
         }
 
         // now insert newRepairs into repair table

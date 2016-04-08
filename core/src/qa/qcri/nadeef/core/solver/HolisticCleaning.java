@@ -62,69 +62,69 @@ public class HolisticCleaning extends FixDecisionMaker {
     public Collection<Fix> decide(Collection<Fix> fixes) {
         // generate the hyper-graph
         // vertex is the cell, and edge is the fix which works on this cell
-        for (Fix fix : fixes) {
-            Cell cell = fix.getLeft();
-            addOrCreate(cell, fix);
+//        for (Fix fix : fixes) {
+//            Cell cell = fix.getLeft();
+//            addOrCreate(cell, fix);
+//
+//            if (!fix.isRightConstant()) {
+//                Cell rightCell = fix.getRight();
+//                addOrCreate(rightCell, fix);
+//            }
+//        }
+//
+//        // initialize the heap by count of edges
+//        // Here we use a greedy approach to find the MVC, which is
+//        // to get the vertexes in the order of hyper-edge counts.
+//        PriorityQueue<CountPair<Cell>> maxHeap = new PriorityQueue<>();
+//        HashMap<Cell, CountPair<Cell>> heapIndex = Maps.newHashMap();
+//
+//        for (Cell cell: graphMap.keySet()) {
+//            CountPair<Cell> pair = new CountPair<>(cell, graphMap.get(cell).size());
+//            maxHeap.add(pair);
+//            heapIndex.put(cell, pair);
+//        }
+//
+//        ArrayList<Fix> result = Lists.newArrayList();
+//
+//        // we try the node with maximum connected fixes first
+//        // until the heap is empty.
+//        while (!maxHeap.isEmpty()) {
+//            HashSet<Fix> repairContext = Sets.newHashSet();
+//            HashSet<Integer> vids = Sets.newHashSet();
+//
+//            CountPair<Cell> topCell = maxHeap.poll();
+//            // generate the frontier using BFS
+//            HashSet<Cell> frontier = generateFrontier(topCell.cell);
+//
+//            // generate repairContext and record all the hyper edges
+//            for (Cell cell : frontier) {
+//                HashSet<Fix> fixSet = graphMap.get(cell);
+//                repairContext.addAll(fixSet);
+//                for (Fix fix : fixSet)
+//                    vids.add(fix.getVid());
+//            }
+//
+//            List<Fix> possibleFixes = determine(repairContext, frontier, topCell.cell);
+//            if (possibleFixes.size() > 0) {
+//                // remove hyper-edges when there is a solution
+//                result.addAll(possibleFixes);
+//
+//                for (Fix fix : fixes) {
+//                    int vid = fix.getVid();
+//                    if (vids.contains(vid)) {
+//                        Cell cell = fix.getLeft();
+//                        if (heapIndex.containsKey(cell))
+//                            maxHeap.remove(heapIndex.get(cell));
+//                        if (!fix.isRightConstant() && heapIndex.containsKey(cell)) {
+//                            cell = fix.getRight();
+//                            maxHeap.remove(heapIndex.get(cell));
+//                        }
+//                    }
+//                }
+//            }
+//        }
 
-            if (!fix.isRightConstant()) {
-                Cell rightCell = fix.getRight();
-                addOrCreate(rightCell, fix);
-            }
-        }
-
-        // initialize the heap by count of edges
-        // Here we use a greedy approach to find the MVC, which is
-        // to get the vertexes in the order of hyper-edge counts.
-        PriorityQueue<CountPair<Cell>> maxHeap = new PriorityQueue<>();
-        HashMap<Cell, CountPair<Cell>> heapIndex = Maps.newHashMap();
-
-        for (Cell cell: graphMap.keySet()) {
-            CountPair<Cell> pair = new CountPair<>(cell, graphMap.get(cell).size());
-            maxHeap.add(pair);
-            heapIndex.put(cell, pair);
-        }
-
-        ArrayList<Fix> result = Lists.newArrayList();
-
-        // we try the node with maximum connected fixes first
-        // until the heap is empty.
-        while (!maxHeap.isEmpty()) {
-            HashSet<Fix> repairContext = Sets.newHashSet();
-            HashSet<Integer> vids = Sets.newHashSet();
-
-            CountPair<Cell> topCell = maxHeap.poll();
-            // generate the frontier using BFS
-            HashSet<Cell> frontier = generateFrontier(topCell.cell);
-
-            // generate repairContext and record all the hyper edges
-            for (Cell cell : frontier) {
-                HashSet<Fix> fixSet = graphMap.get(cell);
-                repairContext.addAll(fixSet);
-                for (Fix fix : fixSet)
-                    vids.add(fix.getVid());
-            }
-
-            List<Fix> possibleFixes = determine(repairContext, frontier, topCell.cell);
-            if (possibleFixes.size() > 0) {
-                // remove hyper-edges when there is a solution
-                result.addAll(possibleFixes);
-
-                for (Fix fix : fixes) {
-                    int vid = fix.getVid();
-                    if (vids.contains(vid)) {
-                        Cell cell = fix.getLeft();
-                        if (heapIndex.containsKey(cell))
-                            maxHeap.remove(heapIndex.get(cell));
-                        if (!fix.isRightConstant() && heapIndex.containsKey(cell)) {
-                            cell = fix.getRight();
-                            maxHeap.remove(heapIndex.get(cell));
-                        }
-                    }
-                }
-            }
-        }
-
-        return result;
+        return determine(new HashSet<>(fixes));
     }
 
     private void addOrCreate(Cell cell, Fix fix) {
@@ -164,9 +164,7 @@ public class HolisticCleaning extends FixDecisionMaker {
     }
 
     private List<Fix> determine(
-        HashSet<Fix> repairContext,
-        HashSet<Cell> frontier,
-        Cell topCell
+        HashSet<Fix> repairContext
     ) {
         boolean hasOnlyEq = true;
         for (Fix fix : repairContext) {
@@ -184,32 +182,35 @@ public class HolisticCleaning extends FixDecisionMaker {
 
         // executing QP, combinatorial trail
         GurobiSolver solver = new GurobiSolver();
-        CombinationGenerator<Cell> gen = new CombinationGenerator<>(frontier);
-        HashSet<Cell> trail = gen.getNext();
+//        CombinationGenerator<Cell> gen = new CombinationGenerator<>(frontier);
+//        HashSet<Cell> trail = gen.getNext();
         List<Fix> result = null;
-        while (trail != null) {
-            result = solver.solve(repairContext, trail);
-            if (result != null &&
-                result.size() > 0 &&
-                FixExtensions.isValidFix(repairContext, result))
-                break;
-            trail = gen.getNext();
-        }
+//        while (trail != null) {
+        Cell cell=repairContext.iterator().next().getLeft();
+        ExecutionContext context = getCurrentContext();
+        boolean isInteger=true;
+            result = solver.solve(repairContext, isInteger);
+//            if (result != null &&
+//                result.size() > 0 &&
+//                FixExtensions.isValidFix(repairContext, result))
+//                break;
+//            trail = gen.getNext();
+//        }
 
         // when everything fail, we mark it as not resolvable.
         // How?
         // mark topCell as the same value as before, this leads to the same assignment
         // in the next cleaning iteration, which eventually leads to a "fresh value".
         // TODO: please prove its correctness.
-        if (result == null) {
-            result = Lists.newArrayList();
-            Fix fix =
-                new Fix.Builder()
-                .left(topCell)
-                .right(topCell)
-                .op(Operation.EQ).build();
-            result.add(fix);
-        }
+//        if (result == null) {
+//            result = Lists.newArrayList();
+//            Fix fix =
+//                new Fix.Builder()
+//                .left(topCell)
+//                .right(topCell)
+//                .op(Operation.EQ).build();
+//            result.add(fix);
+//        }
 
         return result;
     }

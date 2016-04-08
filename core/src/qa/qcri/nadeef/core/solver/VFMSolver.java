@@ -18,6 +18,7 @@ import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.Fix;
 import qa.qcri.nadeef.core.datamodel.Operation;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -27,9 +28,9 @@ import java.util.List;
  * {@link qa.qcri.nadeef.core.datamodel.Fix}. The implementation is by counting the
  * frequency of values and set the new value with the highest count.
  */
-public class VFMSolver extends SolverBase {
-    @Override
-    public List<Fix> solve(HashSet<Fix> repairContext, HashSet<Cell> changed) {
+public class VFMSolver {
+
+    public List<Fix> solve(Collection<Fix> repairContext) {
         HashSet<Cell> cells = Sets.newHashSet();
         HashMap<String, Integer> countMap = Maps.newHashMap();
 //        Object original=null;

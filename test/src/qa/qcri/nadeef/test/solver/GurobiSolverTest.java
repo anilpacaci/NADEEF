@@ -65,7 +65,7 @@ public class GurobiSolverTest {
 //        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
 //        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
 //        fixSet.add(builder.left(ta).right(tb).op(Operation.EQ).build());
-        Collection<Fix> result = new HolisticCleaning(null).decide(fixSet);
+        Collection<Fix> result = new GurobiSolver().solve(fixSet,false);
         double va=0.0, vb=0.0;
         for (Fix fix : result) {
             if (fix.getLeft().equals(ta))
@@ -94,7 +94,7 @@ public class GurobiSolverTest {
         fixSet.add(builder.left(ta).right(3).op(Operation.GT).build());
         // fixSet.add(builder.left(tb).right(5).op(Operation.NEQ).build());
 
-        List<Fix> result = new GurobiSolver().solve(fixSet);
+        List<Fix> result = new GurobiSolver().solve(fixSet,false);
         double va = ta.getValue(), vb = tb.getValue(), vc = tc.getValue();
         for (Fix fix : result) {
             if (fix.getLeft().equals(ta))
@@ -165,7 +165,7 @@ public class GurobiSolverTest {
         fixSet.add(builder.left(tb).right(3).op(Operation.GT).build());
         fixSet.add(builder.left(tc).right(5).op(Operation.LT).build());
 
-        List<Fix> result = new GurobiSolver().solve(fixSet);
+        List<Fix> result = new GurobiSolver().solve(fixSet,false);
         Assert.assertEquals(result, null);
         /*
         double va = ta.getValue(), vb = tb.getValue(), vc = tc.getValue();

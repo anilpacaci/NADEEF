@@ -19,6 +19,7 @@ import com.google.common.collect.Ordering;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
 import qa.qcri.nadeef.core.pipeline.ExecutionContext;
 import qa.qcri.nadeef.core.solver.HolisticCleaning;
+import qa.qcri.nadeef.core.solver.SuggestedRepairSolver;
 import qa.qcri.nadeef.core.utils.Fixes;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectBase;
@@ -47,6 +48,10 @@ public class RepairGroup implements Comparable {
     private Map<Fix, Double> VOIMap;
     private List<Map.Entry<Fix, Double>> sortedFixByVIO;
 
+    public String getName(){
+        return this.attributeName;
+    }
+
     public RepairGroup(String attributeName, String dirtyTableName, ExecutionContext context) {
         this.attributeName = attributeName;
         this.dirtyTableName = dirtyTableName;
@@ -60,14 +65,15 @@ public class RepairGroup implements Comparable {
         return VOIMap.values().stream().mapToDouble(Double::doubleValue).sum();
     }
 
-    public void populateFix() {
+    public void populateFix() throws NadeefDatabaseException {
         VOIMap.clear();
+        sortedFixByVIO.clear();
 
         DBConfig dbConfig = this.context.getConnectionPool().getNadeefConfig();
         Connection conn = null;
 
         // find new cells
-        String selectCellsQuery = new StringBuilder().append("SELECT DISTINCT tid FROM ").append(NadeefConfiguration.getViolationTableName()).append(" WHERE attribute = ?").toString();
+        String selectCellsQuery = new StringBuilder().append("SELECT DISTINCT tupleid FROM ").append(NadeefConfiguration.getViolationTableName()).append(" WHERE attribute = ?").toString();
 
         try {
             conn = DBConnectionPool.createConnection(dbConfig);
@@ -78,7 +84,7 @@ public class RepairGroup implements Comparable {
                 int tupleid = rs.getInt(1);
                 Cell cell = getDatabaseCell(this.dirtyTableName, tupleid, this.attributeName);
                 Collection<Fix> fixes = getFixesOfCell(cell);
-                Fix solution = new HolisticCleaning(this.context).decide(fixes).iterator().next();
+                Fix solution = new SuggestedRepairSolver().solve(fixes).iterator().next();
 
                 if(solution.getRightValue().isEmpty()) {
                     // this happens in case of all NEQs, it means v-repair. We need to suggest a value from domain
@@ -86,11 +92,14 @@ public class RepairGroup implements Comparable {
                 double score = calculateVOI(solution, fixes);
                 this.VOIMap.put(solution, score);
             }
-        // sort VOI into sortedList
+            rs.close();
+            statement.close();
+            conn.close();
+        // sort VOI into sortedList, in descending order
             Ordering<Map.Entry<Fix, Double>> orderByVOI = new Ordering<Map.Entry<Fix, Double>>() {
                 @Override
                 public int compare(Map.Entry<Fix, Double> left, Map.Entry<Fix, Double> right) {
-                    return left.getValue().compareTo(right.getValue());
+                    return -left.getValue().compareTo(right.getValue());
                 }
             };
 
@@ -99,7 +108,8 @@ public class RepairGroup implements Comparable {
 
 
         } catch (Exception e) {
-
+            tracer.error("Cells of a group " + this.attributeName+ " could NOT be retrieved", e);
+            throw new NadeefDatabaseException(e);
         }
 
     }
@@ -114,6 +124,10 @@ public class RepairGroup implements Comparable {
             return this.sortedFixByVIO.get(offset).getKey();
         else
             return null;
+    }
+
+    public boolean hasNext(int offset) {
+        return offset < this.sortedFixByVIO.size();
     }
 
     private double calculateVOI(Fix fix, Collection<Fix> repairContext) {

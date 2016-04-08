@@ -29,7 +29,8 @@ import java.util.List;
 
 public class GurobiSolver {
     private Logger tracer = Logger.getLogger(GurobiSolver.class);
-    double precision=0.00001;
+    //this precision is to deal with GT, LT, it is very tricky if i set it to 0.00001 then it do not work when 2 NEQ and 1 EQ for integer case
+    double precision=0.0001;
 
     private List<Fix> consistentSolve(Collection<Fix> repairContext, boolean isInteger){
         HashSet<Cell> changedCell = new HashSet<>();
@@ -407,15 +408,15 @@ public class GurobiSolver {
             model.update();
 
             // Apply Numerical Distance Minimality
-            GRBQuadExpr numMinDistance = new GRBQuadExpr();
-
-            for (Cell cell : cellIndex.keySet()) {
-                GRBVar var = cellIndex.get(cell);
-                double value = getValue(cell.getValue());
-                numMinDistance.addTerm(1.0, var, var);
-                numMinDistance.addConstant(value * value);
-                numMinDistance.addTerm(-2.0 * value, var);
-            }
+//            GRBQuadExpr numMinDistance = new GRBQuadExpr();
+//
+//            for (Cell cell : cellIndex.keySet()) {
+//                GRBVar var = cellIndex.get(cell);
+//                double value = getValue(cell.getValue());
+//                numMinDistance.addTerm(1.0, var, var);
+//                numMinDistance.addConstant(value * value);
+//                numMinDistance.addTerm(-2.0 * value, var);
+//            }
 
             // Apply Cardinality Minimality
             /*

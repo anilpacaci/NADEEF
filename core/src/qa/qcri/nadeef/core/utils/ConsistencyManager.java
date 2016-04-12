@@ -23,10 +23,7 @@ import qa.qcri.nadeef.core.pipeline.FixExport;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
 import qa.qcri.nadeef.tools.Logger;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 
@@ -64,12 +61,25 @@ public class ConsistencyManager {
         ruleMap.put(rule.getRuleName(), rule);
     }
 
-    public void removeViolations(Cell updatedCell, ExecutionContext context) throws SQLException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+    public Set<Integer> checkConsistency(ExecutionContext context, Cell updatedCell) throws Exception {
+        Set<Integer> affectedCells = removeViolations(updatedCell, context);
+        affectedCells.addAll(findNewViolations(updatedCell, context));
+
+        return affectedCells;
+    }
+
+    public Set<Integer> removeViolations(Cell updatedCell, ExecutionContext context) throws SQLException, IllegalAccessException, InstantiationException, ClassNotFoundException {
         DBConnectionPool dbConnectionPool = context.getConnectionPool();
+
+        Set<Integer> affectedTuples = Sets.newHashSet();
 
         // delete all existing violations of this cell
         String violationTableName = NadeefConfiguration.getViolationTableName();
         String repairTableName = NadeefConfiguration.getRepairTableName();
+
+        String effectedCellsSQL = new StringBuilder().append("SELECT c1_tupleid, c2_tupleid FROM ").append(repairTableName).
+            append(" WHERE c1_attribute = ? AND c2_attribute = ? AND vid IN (SELECT vid FROM ").
+            append(violationTableName).append(" WHERE tupleid = ? AND attribute = ? ) ").toString();
 
         String deleteRepairSQL = new StringBuilder().append("DELETE FROM ").
             append(repairTableName).
@@ -87,6 +97,21 @@ public class ConsistencyManager {
         PreparedStatement stat = null;
         try {
             conn = dbConnectionPool.getNadeefConnection();
+
+            // first retrieve all effected tupleids
+            stat = conn.prepareStatement(effectedCellsSQL);
+            stat.setString(1, updatedCell.getColumn().getColumnName());
+            stat.setString(2, updatedCell.getColumn().getColumnName());
+            stat.setInt(3, updatedCell.getTid());
+            stat.setString(4, updatedCell.getColumn().getColumnName());
+            ResultSet resultSet = stat.executeQuery();
+            while(resultSet.next()) {
+                int tupleID1 = resultSet.getInt(1);
+                int tupleID2 = resultSet.getInt(2);
+                affectedTuples.add(tupleID1);
+                affectedTuples.add(tupleID2);
+            }
+            resultSet.close();
 
             stat = conn.prepareStatement(deleteRepairSQL);
             stat.setInt(1, updatedCell.getTid());
@@ -113,10 +138,14 @@ public class ConsistencyManager {
             }
         }
 
+        // remove the original tuple id
+        affectedTuples.remove(updatedCell.getTid());
+        return affectedTuples;
     }
 
-    public void findNewViolations(Cell updatedCell, ExecutionContext context) throws Exception {
+    public Set<Integer> findNewViolations(Cell updatedCell, ExecutionContext context) throws Exception {
         // check if this new cell creates a new violation
+        Set<Integer> affectedCells = Sets.newHashSet();
 
         NonBlockingCollectionIterator<Violation> outputIterator = new NonBlockingCollectionIterator<>();
         Collection<Collection<Fix>> newRepairs = Lists.newArrayList();
@@ -210,6 +239,12 @@ public class ConsistencyManager {
                 for (Fix fix : fixes) {
                     String sql = FixExport.getSQLInsert(id, fix);
                     statement.addBatch(sql);
+
+                    // add tupleid to affected cells
+                    if(fix.getLeft().getColumn().equals(updatedCell.getColumn()) && fix.getRight().getColumn().equals(updatedCell.getColumn())) {
+                        affectedCells.add(fix.getLeft().getTid());
+                        affectedCells.add(fix.getRight().getTid());
+                    }
                 }
                 id ++;
             }
@@ -224,6 +259,10 @@ public class ConsistencyManager {
                 conn.close();
             }
         }
+
+        // remove the original tupleid
+        affectedCells.remove(updatedCell.getTid());
+        return affectedCells;
 
     }
 

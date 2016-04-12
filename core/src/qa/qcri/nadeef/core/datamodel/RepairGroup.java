@@ -16,6 +16,7 @@ package qa.qcri.nadeef.core.datamodel;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Ordering;
+import com.google.common.collect.Sets;
 import qa.qcri.nadeef.core.exceptions.NadeefClassifierException;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
 import qa.qcri.nadeef.core.pipeline.ExecutionContext;
@@ -45,15 +46,15 @@ public class RepairGroup implements Comparable {
     private Column attributeColumn;
     private String dirtyTableName;
 
-    private Map<Fix, Double> scoreMap;
-    private List<Map.Entry<Fix, Double>> sortedFixByScore;
+    private Map<Integer, Fix> solutionMap;
+    private Map<Integer, Double> scoreMap;
+    private List<Map.Entry<Integer, Double>> sortedFixByScore;
 
-    private List<Fix> solutionList;
-    private Map<Fix, TrainingInstance> trainingInstanceMap;
+    private Map<Integer, TrainingInstance> trainingInstanceMap;
 
     private Schema databaseSchema;
 
-    public Column getColumn(){
+    public Column getColumn() {
         return this.attributeColumn;
     }
 
@@ -62,10 +63,11 @@ public class RepairGroup implements Comparable {
         this.dirtyTableName = dirtyTableName;
         this.context = context;
 
+        this.trainingInstanceMap = Maps.newHashMap();
+
+        this.solutionMap = Maps.newHashMap();
         this.scoreMap = Maps.newHashMap();
         this.sortedFixByScore = Lists.newArrayList();
-        this.solutionList = Lists.newArrayList();
-        this.trainingInstanceMap = Maps.newHashMap();
 
         this.databaseSchema = databaseSchema;
 
@@ -77,7 +79,8 @@ public class RepairGroup implements Comparable {
 
     public void populateFixByVOI() throws NadeefDatabaseException {
         scoreMap.clear();
-        sortedFixByScore.clear();
+        solutionMap.clear();
+
 
         DBConfig dbConfig = this.context.getConnectionPool().getNadeefConfig();
         Connection conn = null;
@@ -90,22 +93,19 @@ public class RepairGroup implements Comparable {
             PreparedStatement statement = conn.prepareStatement(selectCellsQuery);
             statement.setString(1, this.attributeColumn.getColumnName());
             ResultSet rs = statement.executeQuery();
-            while(rs.next()) {
+            while (rs.next()) {
                 int tupleid = rs.getInt(1);
                 Tuple tuple = getDatabaseTuple(this.dirtyTableName, tupleid);
                 Cell cell = tuple.getCell(this.attributeColumn.getColumnName());
                 Collection<Fix> fixes = getFixesOfCell(cell);
                 Fix solution = new SuggestedRepairSolver().solve(fixes).iterator().next();
 
-                if(solution.getRightValue().isEmpty()) {
-                    // this happens in case of all NEQs, it means v-repair. We need to suggest a value from domain
-                }
-
-                this.solutionList.add(solution);
-                this.trainingInstanceMap.put(solution, new TrainingInstance(null, tuple,this.attributeColumn.getColumnName(),  solution.getRightValue(), 0));
+                this.trainingInstanceMap.put(tupleid, new TrainingInstance(null, tuple, this.attributeColumn.getColumnName(), solution.getRightValue(), 0));
 
                 double score = calculateVOIScore(solution, fixes);
-                this.scoreMap.put(solution, score);
+                this.scoreMap.put(solution.getLeft().getTid(), score);
+                this.solutionMap.put(solution.getLeft().getTid(), solution);
+
             }
             rs.close();
             statement.close();// sort VOI into sortedList, in descending order
@@ -114,55 +114,73 @@ public class RepairGroup implements Comparable {
             rankByScore();
 
         } catch (Exception e) {
-            tracer.error("Cells of a group " + this.attributeColumn.getColumnName()+ " could NOT be retrieved", e);
+            tracer.error("Cells of a group " + this.attributeColumn.getColumnName() + " could NOT be retrieved", e);
             throw new NadeefDatabaseException(e);
         }
     }
 
-    public void populateFixByEntropy(ClassifierBase classifier) throws NadeefDatabaseException {
-        scoreMap.clear();
-        sortedFixByScore.clear();
+    /**
+     * @param classifier
+     * @param affectedTuples Set of tuple IDs that have been affected by latest update. If null, calculate for every tuple
+     * @throws NadeefDatabaseException
+     */
+    public void populateFixByEntropy(ClassifierBase classifier, Set<Integer> affectedTuples) throws NadeefDatabaseException, SQLException {
 
+        String selectCellsQuery;
         DBConfig nadeefDBConfig = this.context.getConnectionPool().getNadeefConfig();
         Connection conn = null;
 
-        // find new cells
-        String selectCellsQuery = new StringBuilder().append("SELECT DISTINCT tupleid FROM ").append(NadeefConfiguration.getViolationTableName()).append(" WHERE attribute = ?").toString();
-
-        try {
-            conn = this.context.getConnectionPool().getNadeefConnection();
-            PreparedStatement statement = conn.prepareStatement(selectCellsQuery);
-            statement.setString(1, this.attributeColumn.getColumnName());
-            ResultSet rs = statement.executeQuery();
-            while(rs.next()) {
-                int tupleid = rs.getInt(1);
-                Tuple tuple = getDatabaseTuple(this.dirtyTableName, tupleid);
-                Cell cell = tuple.getCell(this.attributeColumn.getColumnName());
-                Collection<Fix> fixes = getFixesOfCell(cell);
-                Fix solution = new SuggestedRepairSolver().solve(fixes).iterator().next();
-
-                if(solution.getRightValue().isEmpty()) {
-                    // this happens in case of all NEQs, it means v-repair. We need to suggest a value from domain
-
+        if (affectedTuples == null) {
+            // means that you have to calculate everything from scratch. Find solution for all cels and calculate score
+            scoreMap.clear();
+            solutionMap.clear();
+            affectedTuples = Sets.newHashSet();
+            // find new cells
+            selectCellsQuery = new StringBuilder().append("SELECT DISTINCT tupleid FROM ").append(NadeefConfiguration.getViolationTableName()).append(" WHERE attribute = ?").toString();
+            try {
+                conn = this.context.getConnectionPool().getNadeefConnection();
+                PreparedStatement statement = conn.prepareStatement(selectCellsQuery);
+                statement.setString(1, this.attributeColumn.getColumnName());
+                ResultSet rs = statement.executeQuery();
+                while (rs.next()) {
+                    int tupleid = rs.getInt(1);
+                    affectedTuples.add(tupleid);
                 }
-
-                double similartyScore = Metrics.getEqual(cell.getValue().toString(), solution.getRightValue());
-                this.solutionList.add(solution);
-                this.trainingInstanceMap.put(solution, new TrainingInstance(null, tuple,this.attributeColumn.getColumnName(),  solution.getRightValue(), similartyScore));
-
-                double score = calculateEntropyScore(solution, classifier);
-                this.scoreMap.put(solution, score);
+                rs.close();
+                statement.close();// sort VOI into sortedList, in descending order
+                conn.close();
+            } catch (Exception e) {
+                tracer.error("Cells of a group " + this.attributeColumn.getColumnName() + " could NOT be retrieved", e);
+                throw new NadeefDatabaseException(e);
             }
-            rs.close();
-            statement.close();// sort VOI into sortedList, in descending order
-            conn.close();
 
-            rankByScore();
-
-        } catch (Exception e) {
-            tracer.error("Cells of a group " + this.attributeColumn.getColumnName()+ " could NOT be retrieved", e);
-            throw new NadeefDatabaseException(e);
         }
+
+        for (Integer tupleid : affectedTuples) {
+            Tuple tuple = getDatabaseTuple(this.dirtyTableName, tupleid);
+            Cell cell = tuple.getCell(this.attributeColumn.getColumnName());
+            Collection<Fix> fixes = getFixesOfCell(cell);
+
+            if (fixes.isEmpty()) {
+                // means that there is no repair for this cell, remove it from the solutionScoreMap
+                this.scoreMap.remove(tupleid);
+                this.solutionMap.remove(tupleid);
+                this.trainingInstanceMap.remove(tupleid);
+
+                //just go to next tuple
+                continue;
+            }
+            Fix solution = new SuggestedRepairSolver().solve(fixes).iterator().next();
+
+            double similartyScore = Metrics.getEqual(cell.getValue().toString(), solution.getRightValue());
+            this.trainingInstanceMap.put(tupleid, new TrainingInstance(null, tuple, this.attributeColumn.getColumnName(), solution.getRightValue(), similartyScore));
+
+            double score = calculateEntropyScore(solution, classifier);
+            this.scoreMap.put(tupleid, score);
+            this.solutionMap.put(tupleid, solution);
+        }
+
+        rankByScore();
     }
 
 
@@ -170,10 +188,11 @@ public class RepairGroup implements Comparable {
      * Ranks the possible repairs inside group bsaed on VOI
      */
     public void rankByScore() {
+        this.sortedFixByScore.clear();
         // sort VOI into sortedList, in descending order
-        Ordering<Map.Entry<Fix, Double>> orderByScore = new Ordering<Map.Entry<Fix, Double>>() {
+        Ordering<Map.Entry<Integer, Double>> orderByScore = new Ordering<Map.Entry<Integer, Double>>() {
             @Override
-            public int compare(Map.Entry<Fix, Double> left, Map.Entry<Fix, Double> right) {
+            public int compare(Map.Entry<Integer, Double> left, Map.Entry<Integer, Double> right) {
                 return -left.getValue().compareTo(right.getValue());
             }
         };
@@ -184,13 +203,15 @@ public class RepairGroup implements Comparable {
 
     /**
      * Retrieve top Fix by VOI
+     *
      * @param offset
      * @return <code>null</code> if there is no more Fix
      */
     public Fix getTopFix(int offset) {
-        if(offset < this.sortedFixByScore.size())
-            return this.sortedFixByScore.get(offset).getKey();
-        else
+        if (offset < this.sortedFixByScore.size()) {
+            int tupleid = this.sortedFixByScore.get(offset).getKey();
+            return this.solutionMap.get(tupleid);
+        } else
             return null;
     }
 
@@ -199,7 +220,7 @@ public class RepairGroup implements Comparable {
     }
 
     private double calculateEntropyScore(Fix fix, ClassifierBase randomForestClassifier) {
-        TrainingInstance trainingInstance = this.trainingInstanceMap.get(fix);
+        TrainingInstance trainingInstance = this.trainingInstanceMap.get(fix.getLeft().getTid());
 
         double entropy = 0;
 
@@ -212,8 +233,8 @@ public class RepairGroup implements Comparable {
 
         Collection<Double> distribution = result.getProbabilities();
 
-        for(Double probability : distribution) {
-            if(probability == 0) {
+        for (Double probability : distribution) {
+            if (probability == 0) {
                 continue;
             }
             entropy -= probability * Math.log(probability);
@@ -223,49 +244,49 @@ public class RepairGroup implements Comparable {
     }
 
     private double calculateVOIScore(Fix fix, Collection<Fix> repairContext) {
-        boolean onlyequality=true;
-        for(Fix repair:repairContext){
-            if(!repair.getOperation().equals(Operation.EQ) && !repair.getOperation().equals(Operation.NEQ)){
-                onlyequality=false; break;
+        boolean onlyequality = true;
+        for (Fix repair : repairContext) {
+            if (!repair.getOperation().equals(Operation.EQ) && !repair.getOperation().equals(Operation.NEQ)) {
+                onlyequality = false;
+                break;
             }
         }
-        double result=0.0;
-        if(onlyequality) {
-            String solution=fix.getRightValue();
+        double result = 0.0;
+        if (onlyequality) {
+            String solution = fix.getRightValue();
             for (Fix repair : repairContext) {
-                String rightValue=repair.getRightValue();
-                switch (repair.getOperation()){
+                String rightValue = repair.getRightValue();
+                switch (repair.getOperation()) {
                     case EQ:
-                        if(solution.equals(rightValue)) result++;
+                        if (solution.equals(rightValue)) result++;
                         break;
                     case NEQ:
-                        if(!solution.equals(rightValue)) result++;
+                        if (!solution.equals(rightValue)) result++;
                         break;
                 }
             }
-        }
-        else{
-            double solution=Double.parseDouble(fix.getRightValue());
+        } else {
+            double solution = Double.parseDouble(fix.getRightValue());
             for (Fix repair : repairContext) {
-                double rightValue=Double.parseDouble(repair.getRightValue());
-                switch (repair.getOperation()){
+                double rightValue = Double.parseDouble(repair.getRightValue());
+                switch (repair.getOperation()) {
                     case EQ:
-                        if(solution==rightValue) result++;
+                        if (solution == rightValue) result++;
                         break;
                     case LT:
-                        if(solution<rightValue) result++;
+                        if (solution < rightValue) result++;
                         break;
                     case GT:
-                        if(solution>rightValue) result++;
+                        if (solution > rightValue) result++;
                         break;
                     case NEQ:
-                        if(solution!=rightValue) result++;
+                        if (solution != rightValue) result++;
                         break;
                     case LTE:
-                        if(solution<=rightValue) result++;
+                        if (solution <= rightValue) result++;
                         break;
                     case GTE:
-                        if(solution>=rightValue) result++;
+                        if (solution >= rightValue) result++;
                         break;
                 }
             }
@@ -275,6 +296,7 @@ public class RepairGroup implements Comparable {
 
     /**
      * Reads the value of a cell and constructs a cell object
+     *
      * @param tableName Dirty or Clean Data source. It only works for source databases imported to Nadeef
      * @param tupleID
      * @param attribute
@@ -296,7 +318,7 @@ public class RepairGroup implements Comparable {
             conn = dbConnectionPool.getSourceConnection();
             stat = conn.createStatement();
             ResultSet rs = stat.executeQuery(dialectManager.selectCell(tableName, tupleID, attribute));
-            if(rs.next()) {
+            if (rs.next()) {
                 value = rs.getObject(attribute);
                 builder.tid(tupleID).column(new Column(tableName, attribute)).value(value);
             }
@@ -305,10 +327,10 @@ public class RepairGroup implements Comparable {
             tracer.error("Cell value could NOT be retrieved from database", e);
             throw new NadeefDatabaseException("Cell with tid:" + tupleID + " attribute: " + attribute + "could NOT be read", e);
         } finally {
-            if(stat != null && !stat.isClosed()) {
+            if (stat != null && !stat.isClosed()) {
                 stat.close();
             }
-            if(conn != null && !conn.isClosed()) {
+            if (conn != null && !conn.isClosed()) {
                 conn.close();
             }
         }
@@ -317,13 +339,14 @@ public class RepairGroup implements Comparable {
 
     /**
      * Reads given tuple from database and constructs a Tuple Object
+     *
      * @param tableName Dirty or Clean Data source. It only works for source databases imported to Nadeef
      * @param tupleID
      * @return
      * @throws SQLException
      * @throws NadeefDatabaseException
      */
-    private Tuple getDatabaseTuple(String tableName, int tupleID ) throws SQLException, NadeefDatabaseException{
+    private Tuple getDatabaseTuple(String tableName, int tupleID) throws SQLException, NadeefDatabaseException {
         Cell.Builder builder = new Cell.Builder();
         DBConnectionPool connectionPool = this.context.getConnectionPool();
         DBConfig sourceDBConfig = this.context.getConnectionPool().getSourceDBConfig();
@@ -339,22 +362,22 @@ public class RepairGroup implements Comparable {
             conn = connectionPool.getSourceConnection();
             stat = conn.createStatement();
             ResultSet rs = stat.executeQuery(dialectManager.selectTuple(tableName, tupleID));
-            if(rs.next()) {
+            if (rs.next()) {
                 List<byte[]> values = new ArrayList<>();
-                for(Column column : schema.getColumns()) {
+                for (Column column : schema.getColumns()) {
                     values.add(rs.getBytes(column.getColumnName()));
                 }
-                tuple = new Tuple(tupleID, schema,values);
+                tuple = new Tuple(tupleID, schema, values);
             }
             rs.close();
         } catch (Exception e) {
             tracer.error("Tuple could NOT be retrieved from database", e);
             throw new NadeefDatabaseException("Tuple with tid:" + tupleID + " could NOT be read", e);
         } finally {
-            if(stat != null && !stat.isClosed()) {
+            if (stat != null && !stat.isClosed()) {
                 stat.close();
             }
-            if(conn != null && !conn.isClosed()) {
+            if (conn != null && !conn.isClosed()) {
                 conn.close();
             }
         }

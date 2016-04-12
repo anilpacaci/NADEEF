@@ -35,10 +35,7 @@ import qa.qcri.nadeef.tools.sql.SQLDialect;
 import weka.classifiers.Classifier;
 
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -122,7 +119,7 @@ public class GuidedRepair
 //                TrainingInstance sampleInstance = new TrainingInstance(TrainingInstance.Label.YES, tuple, topGroup.getColumn().getColumnName(), tuple.getCell(topGroup.getColumn()).getValue().toString(), 1);
 //                classifier.updateClassifier(sampleInstance);
 
-                topGroup.populateFixByEntropy(classifier);
+                topGroup.populateFixByEntropy(classifier, null);
 
                 while (topGroup.hasNext(offset)) {
                     Fix solution = topGroup.getTopFix(offset);
@@ -169,12 +166,10 @@ public class GuidedRepair
 
                         // call ConsistencyManager to recompute violatios
                         Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attribute)).value(solutionValue).build();
-                        // remove existing violations
-                        ConsistencyManager.getInstance().removeViolations(updatedCell, getCurrentContext());
-                        // find new violations
-                        ConsistencyManager.getInstance().findNewViolations(updatedCell, getCurrentContext());
+                        // remove existing violations and find new ones
+                        Set<Integer> affectedTuples = ConsistencyManager.getInstance().checkConsistency(getCurrentContext(), updatedCell);
 
-                        topGroup.populateFixByEntropy(classifier);
+                        topGroup.populateFixByEntropy(classifier, affectedTuples);
                     } else {
                         // just increase the offset to retrieve the nextrepaircell
                         offset++;

@@ -21,13 +21,24 @@ package qa.qcri.nadeef.core.datamodel;
 public class TrainingInstance {
     private Label label;
     private Tuple dirtyTuple;
-    private Cell updatedCell;
+    private String updatedValue;
     private double similarityScore;
 
-    public TrainingInstance(Label label, Tuple dirtyTuple, Cell updatedCell, double similarityScore) {
+    public String getAttribute() {
+        return attribute;
+    }
+
+    public void setAttribute(String attribute) {
+        this.attribute = attribute;
+    }
+
+    private String attribute;
+
+    public TrainingInstance(Label label, Tuple dirtyTuple, String attribute, String updatedValue, double similarityScore) {
         this.label = label;
         this.dirtyTuple = dirtyTuple;
-        this.updatedCell = updatedCell;
+        this.attribute = attribute;
+        this.updatedValue = updatedValue;
         this.similarityScore = similarityScore;
     }
 
@@ -47,12 +58,12 @@ public class TrainingInstance {
         this.label = label;
     }
 
-    public Cell getUpdatedCell() {
-        return updatedCell;
+    public String getUpdatedValue() {
+        return updatedValue;
     }
 
-    public void setUpdatedCell(Cell updatedCell) {
-        this.updatedCell = updatedCell;
+    public void setUpdatedValue(String updatedValue) {
+        this.updatedValue = updatedValue;
     }
 
     public double getSimilarityScore() {
@@ -65,7 +76,7 @@ public class TrainingInstance {
 
     public enum Label {
         YES(0),
-        NO(1);
+        NO(1), ;
 
         private final int value;
 

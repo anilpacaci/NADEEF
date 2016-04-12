@@ -17,6 +17,9 @@ import com.google.common.collect.*;
 import qa.qcri.nadeef.core.datamodel.Cell;
 import qa.qcri.nadeef.core.datamodel.Fix;
 import qa.qcri.nadeef.core.datamodel.Operation;
+import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
+import qa.qcri.nadeef.core.utils.sql.ValueHelper;
+import qa.qcri.nadeef.tools.Logger;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -30,11 +33,15 @@ import java.util.List;
  */
 public class VFMSolver {
 
+    private static Logger tracer = Logger.getLogger(VFMSolver.class);
+
+
     public List<Fix> solve(Collection<Fix> repairContext) {
         HashSet<Cell> cells = Sets.newHashSet();
         HashMap<String, Integer> countMap = Maps.newHashMap();
 //        Object original=null;
         for (Fix fix : repairContext) {
+
 //            original=fix.getLeft().getValue();
             if (fix.isRightConstant()) {
                 if(fix.getOperation().equals(Operation.EQ))
@@ -54,8 +61,29 @@ public class VFMSolver {
         java.util.Iterator<Cell> iter=cells.iterator();
         String original=iter.next().getValue().toString();
         int maxCount = 0; String solution=original;
-        if(countMap.containsKey(original) && countMap.get(original)<0)
-            solution="";
+        if(countMap.containsKey(original) && countMap.get(original)<0) {
+            solution = "";
+            Cell dirtyCell = cells.iterator().next();
+            String tableName = dirtyCell.getColumn().getTableName();
+            String cleanTableName = tableName.replace("NOISE", "CLEAN").replace("noise", "clean");
+            String attributeName = dirtyCell.getColumn().getColumnName();
+
+            try {
+                List<String> distintValues = ValueHelper.getInstance().getDistinctValues(cleanTableName, attributeName);
+                for(String domainValue : distintValues) {
+                    if(!countMap.containsKey(domainValue)) {
+                        // this is a value not used in domain. Does not have any constraint saying it should ne NEQ
+                        solution = domainValue;
+                        break;
+                    }
+                }
+            } catch (NadeefDatabaseException e) {
+                tracer.error("Distinct values could NOT be read, suggest empty string", e);
+                solution = "";
+            }
+        }
+
+
         for(String o:countMap.keySet()){
             if(countMap.get(o)>=maxCount){
                 maxCount=countMap.get(o);

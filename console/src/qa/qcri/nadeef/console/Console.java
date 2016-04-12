@@ -25,7 +25,7 @@ import qa.qcri.nadeef.core.pipeline.CleanExecutor;
 import qa.qcri.nadeef.core.pipeline.UpdateExecutor;
 import qa.qcri.nadeef.core.utils.Bootstrap;
 import qa.qcri.nadeef.core.utils.CSVTools;
-import qa.qcri.nadeef.core.utils.UpdateManager;
+import qa.qcri.nadeef.core.utils.ConsistencyManager;
 import qa.qcri.nadeef.core.utils.sql.DBInstaller;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectBase;
 import qa.qcri.nadeef.core.utils.sql.SQLDialectFactory;
@@ -33,7 +33,6 @@ import qa.qcri.nadeef.tools.CommonTools;
 import qa.qcri.nadeef.tools.DBConfig;
 import qa.qcri.nadeef.tools.PerfReport;
 import qa.qcri.nadeef.tools.Logger;
-import sun.rmi.runtime.Log;
 
 import java.io.File;
 import java.io.FileReader;
@@ -258,7 +257,7 @@ public class Console {
             for (CleanPlan cleanPlan : cleanPlans) {
                 executors.add(new CleanExecutor(cleanPlan, dbConfig));
                 // add each rule to update Manager
-                UpdateManager.getInstance().addRule(cleanPlan.getRule());
+                ConsistencyManager.getInstance().addRule(cleanPlan.getRule());
             }
         } catch (Exception ex) {
             tracer.error("Loading CleanPlan failed.", ex);

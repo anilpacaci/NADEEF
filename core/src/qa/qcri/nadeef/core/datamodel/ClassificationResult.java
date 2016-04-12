@@ -15,6 +15,7 @@ package qa.qcri.nadeef.core.datamodel;
 
 import weka.core.Attribute;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.SortedMap;
@@ -25,8 +26,8 @@ import java.util.SortedMap;
  */
 public class ClassificationResult {
 
-    private Map<Object, Double> classDistributions;
-    private Object topClass;
+    private Map<TrainingInstance.Label, Double> classDistributions;
+    private TrainingInstance.Label topClass;
 
     public ClassificationResult(double[] prediction, Attribute labelAttribute) {
         classDistributions = new HashMap<>();
@@ -35,20 +36,27 @@ public class ClassificationResult {
         for(int i = 0 ; i < prediction.length ; i++) {
             double probability = prediction[i];
             String value = labelAttribute.value(i);
-            classDistributions.put(value, probability);
+
+            TrainingInstance.Label label = TrainingInstance.Label.valueOf(value);
+
+            classDistributions.put(label, probability);
             if(probability > maxProbability) {
-                topClass = value;
+                topClass = label;
                 maxProbability = probability;
             }
         }
     }
 
-    public Object getTopLabel() {
+    public TrainingInstance.Label getTopLabel() {
         return topClass;
     }
 
-    public double getProbability(Object classLabel) {
+    public double getProbability(TrainingInstance.Label classLabel) {
         return classDistributions.get(classLabel);
+    }
+
+    public Collection<Double> getProbabilities() {
+        return classDistributions.values();
     }
 
 }

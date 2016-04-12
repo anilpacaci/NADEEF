@@ -54,6 +54,20 @@ public final class Metrics {
         return a.equals(b) ? 1.0f : 0.0f;
     }
 
+    public static double getEqual(Double a, Double b) {
+        if (a == null || b == null) {
+            return 0.0;
+        }
+        return a.equals(b) ? 1.0f : 0.0f;
+    }
+
+    public static double getEqual(Integer a, Integer b) {
+        if (a == null || b == null) {
+            return 0.0;
+        }
+        return a.equals(b) ? 1.0f : 0.0f;
+    }
+
 
     private static double template(String a, String b, AbstractStringMetric metric) {
         if (a == null || b == null) {
@@ -61,4 +75,5 @@ public final class Metrics {
         }
         return metric.getSimilarity(a, b);
     }
+
 }

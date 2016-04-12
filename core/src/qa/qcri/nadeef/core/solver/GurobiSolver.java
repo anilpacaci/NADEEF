@@ -29,7 +29,7 @@ import java.util.List;
 
 public class GurobiSolver {
     private Logger tracer = Logger.getLogger(GurobiSolver.class);
-    double precision=0.00001;
+    double precision=0.0001;
 
     private List<Fix> consistentSolve(Collection<Fix> repairContext, boolean isInteger){
         HashSet<Cell> changedCell = new HashSet<>();

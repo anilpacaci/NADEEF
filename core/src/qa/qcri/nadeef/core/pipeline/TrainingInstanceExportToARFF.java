@@ -13,36 +13,29 @@
 
 package qa.qcri.nadeef.core.pipeline;
 
-import com.google.common.base.Strings;
+import com.google.common.base.Optional;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
-import qa.qcri.nadeef.core.utils.classification.ClassificationHelper;
-import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
-import qa.qcri.nadeef.core.utils.sql.SQLDialectBase;
-import qa.qcri.nadeef.core.utils.sql.SQLDialectFactory;
+import qa.qcri.nadeef.core.utils.sql.ValueHelper;
 import qa.qcri.nadeef.tools.CommonTools;
-import qa.qcri.nadeef.tools.DBConfig;
 import qa.qcri.nadeef.tools.Logger;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.StringJoiner;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * Exports TrainingInstance list to a CSV file
  */
-public class TrainingInstanceExportToARFF extends Operator<Collection<TrainingInstance>, File> {
+public class TrainingInstanceExportToARFF extends Operator<Collection<TrainingInstance>, Integer> {
 
     private static Logger tracer = Logger.getLogger(TrainingInstanceExportToARFF.class);
 
@@ -51,21 +44,66 @@ public class TrainingInstanceExportToARFF extends Operator<Collection<TrainingIn
     }
 
     @Override
-    protected File execute(Collection<TrainingInstance> trainingInstances) throws Exception {
+    protected Integer execute(Collection<TrainingInstance> trainingInstances) throws Exception {
 
-        Path outputPath = NadeefConfiguration.getOutputPath();
+        Map<String, List<TrainingInstance>> trainingInstancesClusters = Maps.newHashMap();
 
+        //we need to cluster training instances by attribute
+        for(TrainingInstance instance : trainingInstances) {
+            String attributeName = instance.getAttribute();
+            if(trainingInstancesClusters.containsKey(attributeName)) {
+                trainingInstancesClusters.get(attributeName).add(instance);
+            } else {
+                List<TrainingInstance> newListForAttribute = Lists.newArrayList();
+                newListForAttribute.add(instance);
+                trainingInstancesClusters.put(attributeName, newListForAttribute);
+            }
+        }
+
+
+        for(String clusteringAttribute : trainingInstancesClusters.keySet()) {
+            List<TrainingInstance> clusterInstances = trainingInstancesClusters.get(clusteringAttribute);
+            writeClusterToFile(clusteringAttribute, clusterInstances);
+        }
+
+        return trainingInstancesClusters.size();
+    }
+
+    private String generateAttributeString(Schema databaseSchema, Column column, String tableName) throws SQLException, NadeefDatabaseException {
+        DataType type = databaseSchema.getType(column.getColumnName());
+        String attributeLine = null;
+        // numeric is the easy part
+        if(type.equals(DataType.DOUBLE) || type.equals(DataType.FLOAT) || type.equals(DataType.INTEGER)) {
+            attributeLine = new StringBuilder().append("@attribute ").append(column.getColumnName()).append(" numeric\n").toString();
+        } else if(type.equals(DataType.BOOL) || type.equals(DataType.STRING)) {
+            // retrieve distinct values from database, create nominal attribute
+            List<String> distinctValues = ValueHelper.getInstance().getDistinctValues(tableName, column.getColumnName());
+            StringBuilder attributeLineBuilder = new StringBuilder().append("@attribute ").append(column.getColumnName()).append(" {");
+            String distinctValuesString = distinctValues.stream().map((s) -> "\"" + s + "\"").collect(Collectors.joining(","));
+            attributeLineBuilder.append(distinctValuesString).append(" }\n");
+            attributeLine = attributeLineBuilder.toString();
+        }
+        return  attributeLine;
+    }
+
+    private void writeClusterToFile(String attributeName, List<TrainingInstance> trainingInstances) throws  Exception{
         //TODO: assume that training instances are not empty
+        if(trainingInstances.isEmpty()) {
+            // no training instance, so we cannot generate any
+            return;
+        }
         TrainingInstance sampleInstance = trainingInstances.iterator().next();
         Schema databaseSchema = sampleInstance.getDirtyTuple().getSchema();
-        Cell updatedCell = sampleInstance.getUpdatedCell();
+        Cell dirtyCell = sampleInstance.getDirtyTuple().getCell(sampleInstance.getAttribute());
+        String updatedValue = sampleInstance.getUpdatedValue();
         String tableName = databaseSchema.getTableName();
 
         List<String> permittedAttributes = NadeefConfiguration.getMLAttributes();
 
+        Path outputPath = NadeefConfiguration.getOutputPath();
         String filename =
             String.format("training_instances_%s_%d.arff",
-                          getCurrentContext().getConnectionPool().getSourceDBConfig().getDatabaseName(),
+                          attributeName,
                           System.currentTimeMillis()
             );
 
@@ -78,7 +116,7 @@ public class TrainingInstanceExportToARFF extends Operator<Collection<TrainingIn
             BufferedOutputStream output = new BufferedOutputStream(fs);
         ) {
             // handle @relation part
-            String relationLine = new StringBuffer().append("@relation ").append(tableName).append("\n").toString();
+            String relationLine = new StringBuffer().append("@relation ").append(attributeName).append("\n").toString();
             output.write(relationLine.getBytes());
 
             // handle the attribute definitions of tuple, it might be tricky cause it requires to handle
@@ -91,8 +129,9 @@ public class TrainingInstanceExportToARFF extends Operator<Collection<TrainingIn
             }
 
             // finally handle additional attributes, new value, similarity and label
-            String newValueLine = generateAttributeString(databaseSchema, updatedCell.getColumn(), tableName);
-            newValueLine.replace(updatedCell.getColumn().getColumnName(), "new_value");
+            // TODO YOU have to generate seperate file for each attbiute so taht you know which column you are working on
+            String newValueLine = generateAttributeString(databaseSchema, dirtyCell.getColumn(), tableName);
+            newValueLine.replace("STATE", "new_value");
             output.write(newValueLine.getBytes());
             String scoreLine = "@attribute similarity_score numeric\n";
             output.write(scoreLine.getBytes());
@@ -122,17 +161,17 @@ public class TrainingInstanceExportToARFF extends Operator<Collection<TrainingIn
 
                 }
                 line.append(CommonTools.escapeString(
-                    trainingInstance.getUpdatedCell().getValue().toString(),
+                    trainingInstance.getUpdatedValue(),
                     CommonTools.DOUBLE_QUOTE
                 )).append(",").
                     append(CommonTools.escapeString(
                         Double.toString(trainingInstance.getSimilarityScore()),
-                    CommonTools.DOUBLE_QUOTE
-                )).append(",").
+                        CommonTools.DOUBLE_QUOTE
+                    )).append(",").
                     append(CommonTools.escapeString(
-                    trainingInstance.getLabel().toString(),
-                    CommonTools.DOUBLE_QUOTE
-                )).append("\n");
+                        trainingInstance.getLabel().toString(),
+                        CommonTools.DOUBLE_QUOTE
+                    )).append("\n");
                 byte[] bytes = line.toString().getBytes();
                 output.write(bytes);
 
@@ -140,23 +179,6 @@ public class TrainingInstanceExportToARFF extends Operator<Collection<TrainingIn
             output.close();
             fs.close();
         }
-        return file;
-    }
 
-    private String generateAttributeString(Schema databaseSchema, Column column, String tableName) throws SQLException, NadeefDatabaseException {
-        DataType type = databaseSchema.getType(column.getColumnName());
-        String attributeLine = null;
-        // numeric is the easy part
-        if(type.equals(DataType.DOUBLE) || type.equals(DataType.FLOAT) || type.equals(DataType.INTEGER)) {
-            attributeLine = new StringBuilder().append("@attribute ").append(column.getColumnName()).append(" numeric\n").toString();
-        } else if(type.equals(DataType.BOOL) || type.equals(DataType.STRING)) {
-            // retrieve distinct values from database, create nominal attribute
-            List<String> distinctValues = ClassificationHelper.getDistinctValues(getCurrentContext().getConnectionPool().getSourceDBConfig(), tableName, column.getColumnName());
-            StringBuilder attributeLineBuilder = new StringBuilder().append("@attribute ").append(column.getColumnName()).append(" {");
-            String distinctValuesString = distinctValues.stream().map((s) -> "\"" + s + "\"").collect(Collectors.joining(","));
-            attributeLineBuilder.append(distinctValuesString).append(" }\n");
-            attributeLine = attributeLineBuilder.toString();
-        }
-        return  attributeLine;
     }
 }

@@ -31,22 +31,27 @@ import java.util.List;
 /**
  * Created by apacaci on 4/5/16.
  */
-public class J48Classifier extends ClassifierBase {
+public class RandomForestClassifier extends ClassifierBase {
 
-    public J48Classifier(ExecutionContext executionContext, Schema databaseSchema, List<String> permittedAttributes, Column newValueColumn) throws NadeefDatabaseException {
-        super(executionContext, databaseSchema, permittedAttributes, newValueColumn);
+    private int forestSize;
+
+    public RandomForestClassifier(ExecutionContext executionContext, Schema tableSchema, List<String> permittedAttributes, Column newValueColumn, int forestSize) throws NadeefDatabaseException {
+        super(executionContext, tableSchema, permittedAttributes, newValueColumn);
+        this.forestSize = forestSize;
 
         // initialize the model
-        this.classifier = new J48();
+        this.classifier = new RandomForest();
+        ((RandomForest)this.classifier).setNumTrees(forestSize);
     }
 
     protected void updateClassifier(Instance instance) throws NadeefClassifierException {
         instances.add(instance);
+        instance.setDataset(instances);
 
         try {
             classifier.buildClassifier(instances);
         } catch (Exception e) {
-            throw new NadeefClassifierException("J48 cannot be built with new instance", e);
+            throw new NadeefClassifierException("RandomForest cannot be built with new instance", e);
         }
     }
 
@@ -55,7 +60,7 @@ public class J48Classifier extends ClassifierBase {
         try {
             return classifier.distributionForInstance(instance);
         } catch (Exception e) {
-            throw new NadeefClassifierException("J48 cannot classifiy the instance", e);
+            throw new NadeefClassifierException("RandomForest cannot classifiy the instance", e);
         }
     }
 

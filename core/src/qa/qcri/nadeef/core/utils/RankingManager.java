@@ -14,12 +14,12 @@
 package qa.qcri.nadeef.core.utils;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
 import qa.qcri.nadeef.core.pipeline.ExecutionContext;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
+import qa.qcri.nadeef.core.utils.sql.DBMetaDataTool;
 import qa.qcri.nadeef.tools.DBConfig;
 import qa.qcri.nadeef.tools.Logger;
 
@@ -53,13 +53,16 @@ public class RankingManager {
     public RepairGroup getTopGroup() throws NadeefDatabaseException {
         repairGroups.clear();
         DBConfig dbConfig = context.getConnectionPool().getNadeefConfig();
+        DBConnectionPool dbConnectionPool = this.context.getConnectionPool();
         Connection conn;
         Statement stat;
 
         String selectDistinctGroupQuery = new StringBuilder().append("SELECT DISTINCT attribute FROM ").append(NadeefConfiguration.getViolationTableName()).toString();
 
         try {
-            conn  = DBConnectionPool.createConnection(dbConfig);
+            Schema databaseSchema = DBMetaDataTool.getSchema(context.getConnectionPool().getSourceDBConfig(), dirtyTableName );
+
+            conn  = dbConnectionPool.getNadeefConnection();
             stat = conn.createStatement();
 
             ResultSet rs = stat.executeQuery(selectDistinctGroupQuery);
@@ -75,16 +78,17 @@ public class RankingManager {
             conn.close();
 
             for(String attribute: attributes) {
-                RepairGroup repairGroup = new RepairGroup(attribute, this.dirtyTableName, this.context);
-                repairGroup.populateFix();
+                Column column = new Column(dirtyTableName, attribute);
+                RepairGroup repairGroup = new RepairGroup(column, this.dirtyTableName, databaseSchema, this.context);
+                repairGroup.populateFixByVOI();
                 this.repairGroups.add(repairGroup);
             }
 
             Collections.sort(repairGroups);
 
             for(int i=0;i<repairGroups.size();i++){
-                if(!finishedGroups.contains(repairGroups.get(i).getName())){
-                    finishedGroups.add(repairGroups.get(i).getName());
+                if(!finishedGroups.contains(repairGroups.get(i).getColumn().getColumnName())){
+                    finishedGroups.add(repairGroups.get(i).getColumn().getColumnName());
                     return repairGroups.get(i);
                 }
             }

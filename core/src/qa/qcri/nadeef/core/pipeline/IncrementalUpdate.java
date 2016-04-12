@@ -39,12 +39,13 @@ public class IncrementalUpdate extends Operator<Collection<Fix>, int[]> {
     @Override
     protected int[] execute(Collection<Fix> fixes) throws Exception {
         DBConfig nadeefConfig = getCurrentContext().getConnectionPool().getNadeefConfig();
+        DBConnectionPool dbConnectionPool = this.getCurrentContext().getConnectionPool();
         Connection conn = null;
         PreparedStatement stat = null;
         int[] newTuples = new int[fixes.size()];
         Logger tracer = Logger.getLogger(IncrementalUpdate.class);
         try {
-            conn = DBConnectionPool.createConnection(nadeefConfig, false);
+            conn = dbConnectionPool.getNadeefConnection();
             stat = conn.prepareStatement("DELETE FROM "
                 + NadeefConfiguration.getViolationTableName()
                 + " WHERE vid IN (SELECT DISTINCT(vid) FROM "

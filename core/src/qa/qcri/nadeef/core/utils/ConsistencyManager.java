@@ -35,24 +35,24 @@ import java.util.concurrent.ConcurrentMap;
  * <p>
  * This is similar to ConsistencyManager in Guided-Data Repair. After every repair to target database, it checks whether existing vilations are still valid and there are any more violations
  */
-public class UpdateManager {
+public class ConsistencyManager {
 
-    private static Logger tracer = Logger.getLogger(UpdateManager.class);
+    private static Logger tracer = Logger.getLogger(ConsistencyManager.class);
 
 
-    private static UpdateManager instance;
+    private static ConsistencyManager instance;
 
     private HashMap<String, Rule> ruleMap;
     private List<Rule> ruleList;
 
-    private UpdateManager() {
+    private ConsistencyManager() {
         ruleMap = new HashMap<>();
         ruleList = new ArrayList<Rule>();
     }
 
-    public static UpdateManager getInstance() {
+    public static ConsistencyManager getInstance() {
         if (instance == null) {
-            instance = new UpdateManager();
+            instance = new ConsistencyManager();
         }
 
         return instance;
@@ -65,6 +65,8 @@ public class UpdateManager {
     }
 
     public void removeViolations(Cell updatedCell, ExecutionContext context) throws SQLException, IllegalAccessException, InstantiationException, ClassNotFoundException {
+        DBConnectionPool dbConnectionPool = context.getConnectionPool();
+
         // delete all existing violations of this cell
         String violationTableName = NadeefConfiguration.getViolationTableName();
         String repairTableName = NadeefConfiguration.getRepairTableName();
@@ -84,7 +86,7 @@ public class UpdateManager {
         Connection conn = null;
         PreparedStatement stat = null;
         try {
-            conn = DBConnectionPool.createConnection(context.getConnectionPool().getNadeefConfig());
+            conn = dbConnectionPool.getNadeefConnection();
 
             stat = conn.prepareStatement(deleteRepairSQL);
             stat.setInt(1, updatedCell.getTid());

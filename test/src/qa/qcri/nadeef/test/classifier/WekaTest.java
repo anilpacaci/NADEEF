@@ -61,7 +61,7 @@ public class WekaTest {
     }
 
     public static void main(String[] args) throws Exception {
-        BufferedReader datafile = readDataFile("examples/training21_tax1k.txt");
+        BufferedReader datafile = readDataFile("/u4/apacaci/Projects/NADEEF/codebase/out/training_instances_State_1460397802794.arff");
 
         Instances data = new Instances(datafile);
         data.setClassIndex(data.numAttributes() - 1);

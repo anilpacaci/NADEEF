@@ -238,7 +238,7 @@ public class Flow {
     }
 
     /**
-     * Gets the current progress percentage.
+     * Gets the current progresupdatedValue.getColumn().getColumnName()s percentage.
      */
     public double getProgress() {
         int percentage = 0;

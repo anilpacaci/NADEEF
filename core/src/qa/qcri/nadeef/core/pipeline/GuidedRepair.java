@@ -15,27 +15,30 @@ package qa.qcri.nadeef.core.pipeline;
 
 import com.google.common.base.Optional;
 import com.google.common.base.Stopwatch;
-import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import qa.qcri.nadeef.core.datamodel.*;
+import qa.qcri.nadeef.core.exceptions.NadeefClassifierException;
 import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
-import qa.qcri.nadeef.core.solver.HolisticCleaning;
 import qa.qcri.nadeef.core.utils.AuditManager;
-import qa.qcri.nadeef.core.utils.Fixes;
+import qa.qcri.nadeef.core.utils.ConsistencyManager;
 import qa.qcri.nadeef.core.utils.RankingManager;
-import qa.qcri.nadeef.core.utils.UpdateManager;
-import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
-import qa.qcri.nadeef.core.utils.sql.DBMetaDataTool;
-import qa.qcri.nadeef.core.utils.sql.SQLDialectBase;
-import qa.qcri.nadeef.core.utils.sql.SQLDialectFactory;
+import qa.qcri.nadeef.core.utils.classification.ClassifierBase;
+import qa.qcri.nadeef.core.utils.classification.J48Classifier;
+import qa.qcri.nadeef.core.utils.classification.RandomForestClassifier;
+import qa.qcri.nadeef.core.utils.sql.*;
+import qa.qcri.nadeef.core.utils.user.GroundTruth;
 import qa.qcri.nadeef.tools.DBConfig;
 import qa.qcri.nadeef.tools.Logger;
+import qa.qcri.nadeef.tools.Metrics;
 import qa.qcri.nadeef.tools.PerfReport;
 import qa.qcri.nadeef.tools.sql.SQLDialect;
+import weka.classifiers.Classifier;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -65,44 +68,66 @@ public class GuidedRepair
         Stopwatch stopwatch = Stopwatch.createStarted();
 
         Rule rule = getCurrentContext().getRule();
-        DBConfig dbConfig = getCurrentContext().getConnectionPool().getSourceDBConfig();
-        SQLDialect dialect = dbConfig.getDialect();
+        DBConfig sourceDBConfig = getCurrentContext().getConnectionPool().getSourceDBConfig();
+        DBConnectionPool sourceConnectionPool = getCurrentContext().getConnectionPool();
+        SQLDialect dialect = sourceDBConfig.getDialect();
         SQLDialectBase dialectManager =
             SQLDialectFactory.getDialectManagerInstance(dialect);
 
         List<TrainingInstance> trainingInstances = new ArrayList<>();
 
+        Map<String, RandomForestClassifier> classifierMap = Maps.newHashMap();
+
         int userInteractionCount = 0;
         int hitCount = 0;
 
-
         // TODO: WARN: XXX: find a better way to pass clean table name
         String dirtyTableName = (String) getCurrentContext().getRule().getTableNames().get(0);
+        Schema dirtyTableSchema = DBMetaDataTool.getSchema(sourceDBConfig, dirtyTableName);
         String cleanTableName = dirtyTableName.replace("NOISE", "CLEAN").replace("noise", "clean");
 
         RankingManager rankingManager = new RankingManager(getCurrentContext(), dirtyTableName, cleanTableName);
         AuditManager auditManager = new AuditManager(getCurrentContext());
 
-        Connection conn = DBConnectionPool.createConnection(dbConfig);
-        Statement stat = conn.createStatement();
+        GroundTruth userSimulation = new GroundTruth(this.getCurrentContext(), cleanTableName, dirtyTableSchema);
 
         int offset = 0;
 
         try {
             while (true) {
+                // initialize all counters what we use
+                int hitPerAttribute = 0;
+                int interactionPerAttribute = 0;
+                int predictedHitPerAttribute = 0;
+                int falsePredictedHITPerAttribute = 0;
+                int predictedNOTHitPerAttribute = 0;
+                int falsePredictedNOTHitPerAttribute = 0;
+
                 //when next group, offset may still be the last offset of last group, reset it to 0
-                offset=0;
+                offset = 0;
                 RepairGroup topGroup = rankingManager.getTopGroup();
-                if(topGroup == null) {
+
+                if (topGroup == null) {
                     // no more repair groups. break
                     break;
                 }
 
-                while(topGroup.hasNext(offset)) {
-                    Fix solution = topGroup.getTopFix(offset);
-                    String suggestedValue=solution.getRightValue();
+                RandomForestClassifier classifier = new RandomForestClassifier(getCurrentContext(), dirtyTableSchema, NadeefConfiguration.getMLAttributes(), topGroup.getColumn(), 10);
+//                J48Classifier classifier = new J48Classifier(getCurrentContext(), dirtyTableSchema, NadeefConfiguration.getMLAttributes(), topGroup.getColumn());
+                String trainingSetFilePath = "examples/tax1KtrainingSet/training_instances_" + topGroup.getColumn().getColumnName() + ".arff";
+                classifier.trainClassifier(trainingSetFilePath);
 
-                    if(auditManager.isAlreadyUpdated(solution.getLeft())) {
+                // TODO one manually generated trainingInstance to start classifier.
+//                Tuple tuple = DBConnectionHelper.getDatabaseTuple(sourceConnectionPool, dirtyTableName, dirtyTableSchema, 5);
+//                TrainingInstance sampleInstance = new TrainingInstance(TrainingInstance.Label.YES, tuple, topGroup.getColumn().getColumnName(), tuple.getCell(topGroup.getColumn()).getValue().toString(), 1);
+//                classifier.updateClassifier(sampleInstance);
+
+                topGroup.populateFixByEntropy(classifier);
+
+                while (topGroup.hasNext(offset)) {
+                    Fix solution = topGroup.getTopFix(offset);
+
+                    if (auditManager.isAlreadyUpdated(solution.getLeft())) {
                         // if cell is already udpated, we do not update it again. We directly skip it
                         offset++;
                         continue;
@@ -110,23 +135,27 @@ public class GuidedRepair
 
                     int tupleID = solution.getLeft().getTid();
                     String attribute = solution.getLeft().getColumn().getColumnName();
-                    Object solutionValue;
 
                     // user interaction, simulate user interaction by checking from clean dataset, ground truth
-                    Tuple dirtyTuple = getDatabaseTuple(dbConfig, dirtyTableName, tupleID);
-                    Cell cleanCell = getDatabaseCell(dbConfig, cleanTableName, tupleID, attribute);
-
-                    Object cleanValue = cleanCell.getValue();
+                    Tuple dirtyTuple = DBConnectionHelper.getDatabaseTuple(sourceConnectionPool, dirtyTableName, dirtyTableSchema, tupleID);
                     Object dirtyValue = dirtyTuple.getCell(attribute).getValue();
 
+                    Object solutionValue;
                     // GurobiSolver returns numerical answers in form of Double. We need to distinguish true integers
-                    if(dirtyValue instanceof Integer) {
+                    if (dirtyValue instanceof Integer) {
                         solutionValue = Math.round(Double.parseDouble(solution.getRightValue()));
                     } else {
                         solutionValue = solution.getRightValue();
                     }
 
-                    if (!cleanValue.toString().equals(dirtyValue.toString())) {
+                    // will be used to update model
+                    double similarityScore = Metrics.getEqual(dirtyValue.toString(), solutionValue.toString());
+                    TrainingInstance newTrainingInstance = new TrainingInstance(null, dirtyTuple, attribute, solutionValue.toString(), similarityScore);
+
+                    boolean isHit = userSimulation.acceptFix(solution);
+                    boolean classifierAnswer = getPredictionResult(classifier, newTrainingInstance);
+
+                    if (isHit) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
                         offset = 0;
 
@@ -136,40 +165,62 @@ public class GuidedRepair
                         auditManager.applyFix(solution);
 
                         // add positive training instance
-                        trainingInstances.add(new TrainingInstance(TrainingInstance.Label.YES, dirtyTuple, cleanCell, 0));
+                        newTrainingInstance = new TrainingInstance(TrainingInstance.Label.YES, dirtyTuple, attribute, solutionValue.toString(), similarityScore);
 
-                        // call UpdateManager to recompute violatios
-                        Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attribute)).value(cleanCell.getValue()).build();
+                        // call ConsistencyManager to recompute violatios
+                        Cell updatedCell = new Cell.Builder().tid(tupleID).column(new Column(dirtyTableName, attribute)).value(solutionValue).build();
                         // remove existing violations
-                        UpdateManager.getInstance().removeViolations(updatedCell, getCurrentContext());
+                        ConsistencyManager.getInstance().removeViolations(updatedCell, getCurrentContext());
                         // find new violations
-                        UpdateManager.getInstance().findNewViolations(updatedCell, getCurrentContext());
+                        ConsistencyManager.getInstance().findNewViolations(updatedCell, getCurrentContext());
 
-                        topGroup.populateFix();
+                        topGroup.populateFixByEntropy(classifier);
                     } else {
                         // just increase the offset to retrieve the nextrepaircell
                         offset++;
-                        if(offset > 20) {
-                            System.out.println("Count:" + userInteractionCount + " Offset:" + offset + " tupleid:" + tupleID + " attribute:" + attribute + " currentValue:" + dirtyTuple.getCell(attribute).getValue());
+                        if (offset > 20) {
+                            //System.out.println("Count:" + userInteractionCount + " Offset:" + offset + " tupleid:" + tupleID + " attribute:" + attribute + " currentValue:" + dirtyTuple.getCell(attribute).getValue());
                         }
                         // add negative training instance
-                        trainingInstances.add(new TrainingInstance(TrainingInstance.Label.NO, dirtyTuple, cleanCell, 0));
+                        newTrainingInstance = new TrainingInstance(TrainingInstance.Label.NO, dirtyTuple, attribute, solutionValue.toString(), similarityScore);
                     }
+
+                    trainingInstances.add(newTrainingInstance);
+                    classifier.updateClassifier(newTrainingInstance);
+
                     userInteractionCount++;
+
+                    // handle per attribute counters
+                    interactionPerAttribute++;
+                    if (isHit) {
+                        hitPerAttribute++;
+                        if (classifierAnswer) {
+                            predictedHitPerAttribute++;
+                        } else {
+                            falsePredictedHITPerAttribute++;
+                        }
+                    } else {
+                        if (classifierAnswer) {
+                            falsePredictedNOTHitPerAttribute++;
+                        } else {
+                            predictedNOTHitPerAttribute++;
+                        }
+                    }
                 }
+
+                //TODO print machine learning accuracy metrics
+
+                System.out.println(topGroup.getColumn().getColumnName() + " total hit: " + hitPerAttribute);
+                System.out.println(topGroup.getColumn().getColumnName() + " total interaction: " + interactionPerAttribute);
+                System.out.println(topGroup.getColumn().getColumnName() + " true positive: " + predictedHitPerAttribute);
+                System.out.println(topGroup.getColumn().getColumnName() + " false positive: " + falsePredictedHITPerAttribute);
+                System.out.println(topGroup.getColumn().getColumnName() + " true negative: " + predictedNOTHitPerAttribute);
+                System.out.println(topGroup.getColumn().getColumnName() + " false negative: " + falsePredictedNOTHitPerAttribute);
             }
         } catch (Exception e) {
             tracer.error("Guided repair could NOT be completed due to SQL Expcetion: ", e);
             throw e;
-        } finally {
-            if (stat != null && !stat.isClosed()) {
-                stat.close();
-            }
-            if (conn != null && !conn.isClosed()) {
-                conn.close();
-            }
         }
-
 
         long elapseTime = stopwatch.elapsed(TimeUnit.MILLISECONDS);
 
@@ -180,89 +231,11 @@ public class GuidedRepair
         return trainingInstances;
     }
 
-    /**
-     * Reads the value of a cell and constructs a cell object
-     * @param dbConfig
-     * @param tableName Dirty or Clean Data source. It only works for source databases imported to Nadeef
-     * @param tupleID
-     * @param attribute
-     * @return
-     * @throws SQLException
-     * @throws NadeefDatabaseException
-     */
-    private Cell getDatabaseCell(DBConfig dbConfig, String tableName, int tupleID, String attribute) throws SQLException, NadeefDatabaseException {
-        Cell.Builder builder = new Cell.Builder();
+    public boolean getPredictionResult(ClassifierBase classifier, TrainingInstance instance) throws NadeefClassifierException {
+        ClassificationResult result = classifier.getPrediction(instance);
+        TrainingInstance.Label topLabel = result.getTopLabel();
 
-        SQLDialectBase dialectManager = SQLDialectFactory.getDialectManagerInstance(dbConfig.getDialect());
-        Connection conn = null;
-        Statement stat = null;
-        Object value = null;
-
-        try {
-            conn = DBConnectionPool.createConnection(dbConfig);
-            stat = conn.createStatement();
-            ResultSet rs = stat.executeQuery(dialectManager.selectCell(tableName, tupleID, attribute));
-            if(rs.next()) {
-                value = rs.getObject(attribute);
-                builder.tid(tupleID).column(new Column(tableName, attribute)).value(value);
-            }
-            rs.close();
-        } catch (IllegalAccessException | InstantiationException | SQLException | ClassNotFoundException e) {
-            tracer.error("Cell value could NOT be retrieved from database", e);
-            throw new NadeefDatabaseException("Cell with tid:" + tupleID + " attribute: " + attribute + "could NOT be read", e);
-        } finally {
-            if(stat != null && !stat.isClosed()) {
-                stat.close();
-            }
-            if(conn != null && !conn.isClosed()) {
-                conn.close();
-            }
-        }
-        return builder.build();
+        return topLabel.equals(TrainingInstance.Label.YES) ? true : false;
     }
 
-    /**
-     * Reads given tuple from database and constructs a Tuple Object
-     * @param dbConfig
-     * @param tableName Dirty or Clean Data source. It only works for source databases imported to Nadeef
-     * @param tupleID
-     * @return
-     * @throws SQLException
-     * @throws NadeefDatabaseException
-     */
-    private Tuple getDatabaseTuple(DBConfig dbConfig, String tableName, int tupleID ) throws SQLException, NadeefDatabaseException{
-        Cell.Builder builder = new Cell.Builder();
-
-        SQLDialectBase dialectManager = SQLDialectFactory.getDialectManagerInstance(dbConfig.getDialect());
-        Connection conn = null;
-        Statement stat = null;
-        Tuple tuple = null;
-        Schema schema = null;
-
-        try {
-            schema = DBMetaDataTool.getSchema(dbConfig, tableName);
-            conn = DBConnectionPool.createConnection(dbConfig);
-            stat = conn.createStatement();
-            ResultSet rs = stat.executeQuery(dialectManager.selectTuple(tableName, tupleID));
-            if(rs.next()) {
-                List<byte[]> values = new ArrayList<>();
-                for(Column column : schema.getColumns()) {
-                    values.add(rs.getBytes(column.getColumnName()));
-                }
-                tuple = new Tuple(tupleID, schema,values);
-            }
-            rs.close();
-        } catch (Exception e) {
-            tracer.error("Tuple could NOT be retrieved from database", e);
-            throw new NadeefDatabaseException("Tuple with tid:" + tupleID + " could NOT be read", e);
-        } finally {
-            if(stat != null && !stat.isClosed()) {
-                stat.close();
-            }
-            if(conn != null && !conn.isClosed()) {
-                conn.close();
-            }
-        }
-        return tuple;
-    }
 }

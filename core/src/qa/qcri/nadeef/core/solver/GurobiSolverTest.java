@@ -44,7 +44,7 @@ public class GurobiSolverTest {
 //        fixSet.add(builder.left(ta).right(20.0).op(Operation.GT).build());
 //        fixSet.add(builder.left(ta).right(2.0).op(Operation.LT).build());
 //        fixSet.add(builder.left(ta).right(2.0).op(Operation.GT).build());
-        fixSet.add(builder.left(ta).right(1.0).op(Operation.EQ).build());
+//        fixSet.add(builder.left(ta).right(1.0).op(Operation.EQ).build());
 //        fixSet.add(builder.left(ta).right(1.0).op(Operation.EQ).build());
         fixSet.add(builder.left(ta).right(1).op(Operation.NEQ).build());
         fixSet.add(builder.left(ta).right(1).op(Operation.NEQ).build());

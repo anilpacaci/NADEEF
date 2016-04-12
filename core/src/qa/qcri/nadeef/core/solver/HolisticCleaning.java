@@ -186,7 +186,7 @@ public class HolisticCleaning extends FixDecisionMaker {
 //        HashSet<Cell> trail = gen.getNext();
         List<Fix> result = null;
 //        while (trail != null) {
-        Cell cell=repairContext.iterator().next().getLeft();
+        Cell cell = repairContext.iterator().next().getLeft();
         ExecutionContext context = getCurrentContext();
         boolean isInteger=true;
             result = solver.solve(repairContext, isInteger);

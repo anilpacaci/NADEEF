@@ -42,19 +42,22 @@ public class GroundTruth {
     }
 
     public boolean acceptFix(Fix fix) throws SQLException, NadeefDatabaseException {
+        Object cleanValue = getCleanValue(fix);
+        Object dirtyValue = fix.getLeft().getValue();
+
+        // just checks whether cell is correct
+        return !cleanValue.toString().equals(dirtyValue.toString());
+    }
+
+    public Object getCleanValue(Fix fix) throws SQLException, NadeefDatabaseException {
         int tupleID = fix.getLeft().getTid();
 
         // user interaction, simulate user interaction by checking from clean dataset, ground truth
         Tuple cleanTuple = DBConnectionHelper.getDatabaseTuple(context.getConnectionPool(), cleanTableName, tableSchema, tupleID);
         Cell cleanCell = cleanTuple.getCell(fix.getLeft().getColumn());
-        
-        // will be used to update model
-        TrainingInstance newTrainingInstance;
+
 
         Object cleanValue = cleanCell.getValue();
-        Object dirtyValue = fix.getLeft().getValue();
-
-        // just checks whether cell is correct
-        return !cleanValue.toString().equals(dirtyValue.toString());
+        return cleanValue;
     }
 }

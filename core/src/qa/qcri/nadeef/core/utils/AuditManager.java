@@ -58,8 +58,9 @@ public class AuditManager {
      * Directly applies given fix to database. First check {{@link #isAlreadyUpdated(Cell)}} to make sure that this cell is not previously updated
      *
      * @param fix
+     * @param override Optional. Overrides the original solution provided in fix, if given
      */
-    public void applyFix(Fix fix) throws NadeefDatabaseException, SQLException {
+    public void applyFix(Fix fix, String override) throws NadeefDatabaseException, SQLException {
         DBConnectionPool connectionPool = context.getConnectionPool();
         Connection nadeefConn = null;
         Connection sourceConn = null;
@@ -88,7 +89,11 @@ public class AuditManager {
                 oldValue = oldValue_.toString();
             }
 
-            rightValue = fix.getRightValue();
+            if(override == null || override.isEmpty()) {
+                rightValue = fix.getRightValue();
+            } else {
+                rightValue = override;
+            }
 
             // check for numerical type.
             if (rightValue != null && !CommonTools.isNumericalString(rightValue)) {

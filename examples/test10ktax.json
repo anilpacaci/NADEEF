@@ -10,15 +10,7 @@
         },
 	{
             "type" : "dc",
-            "value" : ["not(t1.Zip=t2.Zip&t1.City!=t2.City)"]
-        },
-	{
-            "type" : "dc",
             "value" : ["not(t1.AreaCode=t2.AreaCode&t1.State!=t2.State)"]
-        },
-	{
-            "type" : "dc",
-            "value" : ["not(t1.Zip=t2.Zip&t1.State!=t2.State)"]
         },
 	{
             "type" : "dc",

@@ -21,6 +21,8 @@ import qa.qcri.nadeef.core.pipeline.DirectIteratorResultHandler;
 import qa.qcri.nadeef.core.pipeline.ExecutionContext;
 import qa.qcri.nadeef.core.pipeline.FixExport;
 import qa.qcri.nadeef.core.utils.sql.DBConnectionPool;
+import qa.qcri.nadeef.core.utils.sql.SQLDialectFactory;
+import qa.qcri.nadeef.tools.DBConfig;
 import qa.qcri.nadeef.tools.Logger;
 
 import java.sql.*;
@@ -59,6 +61,44 @@ public class ConsistencyManager {
         // build a hashmap from tuples attributes and rules
         ruleList.add(rule);
         ruleMap.put(rule.getRuleName(), rule);
+    }
+
+    /**
+     * Returns the number of violations in violation table. Used to track data cleaning progress
+     * @param context
+     * @return
+     * @throws Exception
+     */
+    public Integer countViolation(ExecutionContext context) throws Exception {
+        Integer violationCount = 0;
+        DBConnectionPool dbConnectionPool = context.getConnectionPool();
+        DBConfig dbConfig = dbConnectionPool.getNadeefConfig();
+
+        String countQuery = SQLDialectFactory.getDialectManagerInstance(dbConfig.getDialect()).countTable(NadeefConfiguration.getViolationTableName());
+
+        Connection conn = null;
+        Statement stat = null;
+        try {
+            conn = dbConnectionPool.getNadeefConnection();
+
+            // retrieve violation count
+            stat = conn.createStatement();
+            ResultSet resultSet = stat.executeQuery(countQuery);
+            if (resultSet.next()) {
+                violationCount = resultSet.getInt(1);
+            }
+        } catch (Exception e) {
+            tracer.error("Violation could NOT be deleted", e);
+        } finally {
+            if (stat != null && !stat.isClosed()) {
+                stat.close();
+            }
+
+            if (conn != null && !conn.isClosed()) {
+                conn.close();
+            }
+        }
+        return violationCount;
     }
 
     public Set<Integer> checkConsistency(ExecutionContext context, Cell updatedCell) throws Exception {

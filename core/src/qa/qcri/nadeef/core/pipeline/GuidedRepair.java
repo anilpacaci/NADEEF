@@ -18,13 +18,9 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Maps;
 import qa.qcri.nadeef.core.datamodel.*;
 import qa.qcri.nadeef.core.exceptions.NadeefClassifierException;
-import qa.qcri.nadeef.core.exceptions.NadeefDatabaseException;
 import qa.qcri.nadeef.core.utils.AuditManager;
 import qa.qcri.nadeef.core.utils.ConsistencyManager;
 import qa.qcri.nadeef.core.utils.RankingManager;
-import qa.qcri.nadeef.core.utils.classification.ClassifierBase;
-import qa.qcri.nadeef.core.utils.classification.J48Classifier;
-import qa.qcri.nadeef.core.utils.classification.RandomForestClassifier;
 import qa.qcri.nadeef.core.utils.sql.*;
 import qa.qcri.nadeef.core.utils.user.GroundTruth;
 import qa.qcri.nadeef.tools.DBConfig;
@@ -32,9 +28,7 @@ import qa.qcri.nadeef.tools.Logger;
 import qa.qcri.nadeef.tools.Metrics;
 import qa.qcri.nadeef.tools.PerfReport;
 import qa.qcri.nadeef.tools.sql.SQLDialect;
-import weka.classifiers.Classifier;
 
-import java.sql.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -46,6 +40,8 @@ import java.util.concurrent.TimeUnit;
 public class GuidedRepair
     extends Operator<Optional, Collection<TrainingInstance>> {
 
+    private static final int TRAINING_SET_THRESHOLD = 100;
+    private static final double CLASSIFIER_ACCURACY_THRESHOLD = 0.75;
     private static Logger tracer = Logger.getLogger(GuidedRepair.class);
 
     public GuidedRepair(ExecutionContext context) {
@@ -73,9 +69,7 @@ public class GuidedRepair
 
         List<TrainingInstance> trainingInstances = new ArrayList<>();
 
-        Map<String, RandomForestClassifier> classifierMap = Maps.newHashMap();
-
-        int userInteractionCount = 0;
+        int globalUserInteractionCount = 0;
         int hitCount = 0;
 
         // TODO: WARN: XXX: find a better way to pass clean table name
@@ -94,11 +88,7 @@ public class GuidedRepair
             while (true) {
                 // initialize all counters what we use
                 int hitPerAttribute = 0;
-                int interactionPerAttribute = 0;
-                int predictedHitPerAttribute = 0;
-                int falsePredictedHITPerAttribute = 0;
-                int predictedNOTHitPerAttribute = 0;
-                int falsePredictedNOTHitPerAttribute = 0;
+                int userInteractionPerAttribute = 0;
 
                 //when next group, offset may still be the last offset of last group, reset it to 0
                 offset = 0;
@@ -109,17 +99,7 @@ public class GuidedRepair
                     break;
                 }
 
-                RandomForestClassifier classifier = new RandomForestClassifier(getCurrentContext(), dirtyTableSchema, NadeefConfiguration.getMLAttributes(), topGroup.getColumn(), 10);
-//                J48Classifier classifier = new J48Classifier(getCurrentContext(), dirtyTableSchema, NadeefConfiguration.getMLAttributes(), topGroup.getColumn());
-                String trainingSetFilePath = "examples/tax1KtrainingSet/training_instances_" + topGroup.getColumn().getColumnName() + ".arff";
-                classifier.trainClassifier(trainingSetFilePath);
-
-                // TODO one manually generated trainingInstance to start classifier.
-//                Tuple tuple = DBConnectionHelper.getDatabaseTuple(sourceConnectionPool, dirtyTableName, dirtyTableSchema, 5);
-//                TrainingInstance sampleInstance = new TrainingInstance(TrainingInstance.Label.YES, tuple, topGroup.getColumn().getColumnName(), tuple.getCell(topGroup.getColumn()).getValue().toString(), 1);
-//                classifier.updateClassifier(sampleInstance);
-
-                topGroup.populateFixByEntropy(classifier, null);
+                topGroup.populateFixByVOI();
 
                 while (topGroup.hasNext(offset)) {
                     Fix solution = topGroup.getTopFix(offset);
@@ -150,7 +130,6 @@ public class GuidedRepair
                     TrainingInstance newTrainingInstance = new TrainingInstance(null, dirtyTuple, attribute, solutionValue.toString(), similarityScore);
 
                     boolean isHit = userSimulation.acceptFix(solution);
-                    boolean classifierAnswer = getPredictionResult(classifier, newTrainingInstance);
 
                     if (isHit) {
                         // HIT :)) dirty cell correctly identified, now update database, reset the offset
@@ -159,7 +138,7 @@ public class GuidedRepair
                         // increase hit count
                         hitCount++;
 
-                        auditManager.applyFix(solution);
+                        auditManager.applyFix(solution, null);
 
                         // add positive training instance
                         newTrainingInstance = new TrainingInstance(TrainingInstance.Label.YES, dirtyTuple, attribute, solutionValue.toString(), similarityScore);
@@ -169,7 +148,7 @@ public class GuidedRepair
                         // remove existing violations and find new ones
                         Set<Integer> affectedTuples = ConsistencyManager.getInstance().checkConsistency(getCurrentContext(), updatedCell);
 
-                        topGroup.populateFixByEntropy(classifier, affectedTuples);
+                        topGroup.populateFixByVOI();
                     } else {
                         // just increase the offset to retrieve the nextrepaircell
                         offset++;
@@ -181,36 +160,15 @@ public class GuidedRepair
                     }
 
                     trainingInstances.add(newTrainingInstance);
-                    classifier.updateClassifier(newTrainingInstance);
+                    userInteractionPerAttribute++;
+                    globalUserInteractionCount++;
 
-                    userInteractionCount++;
 
-                    // handle per attribute counters
-                    interactionPerAttribute++;
-                    if (isHit) {
-                        hitPerAttribute++;
-                        if (classifierAnswer) {
-                            predictedHitPerAttribute++;
-                        } else {
-                            falsePredictedHITPerAttribute++;
-                        }
-                    } else {
-                        if (classifierAnswer) {
-                            falsePredictedNOTHitPerAttribute++;
-                        } else {
-                            predictedNOTHitPerAttribute++;
-                        }
-                    }
+                    Integer violationCount = ConsistencyManager.getInstance().countViolation(getCurrentContext());
+                    // output interaction count and # of violations
+                    System.out.println("# of violations: " + violationCount + " Interaction count: " + globalUserInteractionCount);
+
                 }
-
-                //TODO print machine learning accuracy metrics
-
-                System.out.println(topGroup.getColumn().getColumnName() + " total hit: " + hitPerAttribute);
-                System.out.println(topGroup.getColumn().getColumnName() + " total interaction: " + interactionPerAttribute);
-                System.out.println(topGroup.getColumn().getColumnName() + " true positive: " + predictedHitPerAttribute);
-                System.out.println(topGroup.getColumn().getColumnName() + " false positive: " + falsePredictedHITPerAttribute);
-                System.out.println(topGroup.getColumn().getColumnName() + " true negative: " + predictedNOTHitPerAttribute);
-                System.out.println(topGroup.getColumn().getColumnName() + " false negative: " + falsePredictedNOTHitPerAttribute);
             }
         } catch (Exception e) {
             tracer.error("Guided repair could NOT be completed due to SQL Expcetion: ", e);
@@ -221,16 +179,9 @@ public class GuidedRepair
 
         PerfReport.appendMetric(PerfReport.Metric.RepairCallTime, elapseTime);
         PerfReport.appendMetric(PerfReport.Metric.UserInteractionHITCount, hitCount);
-        PerfReport.appendMetric(PerfReport.Metric.UserInteractionCount, userInteractionCount);
+        PerfReport.appendMetric(PerfReport.Metric.UserInteractionCount, globalUserInteractionCount);
         stopwatch.stop();
         return trainingInstances;
-    }
-
-    public boolean getPredictionResult(ClassifierBase classifier, TrainingInstance instance) throws NadeefClassifierException {
-        ClassificationResult result = classifier.getPrediction(instance);
-        TrainingInstance.Label topLabel = result.getTopLabel();
-
-        return topLabel.equals(TrainingInstance.Label.YES) ? true : false;
     }
 
 }
